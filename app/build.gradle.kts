@@ -39,7 +39,7 @@ android {
             )
         }
         debug {
-            versionNameSuffix = "-playback-fix3"
+            versionNameSuffix = " (Playback Fix)"
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(

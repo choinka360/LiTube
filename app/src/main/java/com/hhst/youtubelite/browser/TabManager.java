@@ -384,7 +384,7 @@ public class TabManager {
 			if (suspended != null) {
 				var ft = fm().beginTransaction();
 				ft.remove(suspended);
-				ft.commit();
+				ft.commitAllowingStateLoss();
 				suspendedTab = null;
 			}
 			activePlayer.exitInAppMiniPlayer();
@@ -395,7 +395,7 @@ public class TabManager {
 
 	private void commitAndRun(@NonNull FragmentTransaction ft, @NonNull Runnable afterCommit) {
 		ft.runOnCommit(afterCommit);
-		ft.commit();
+		ft.commitAllowingStateLoss();
 	}
 
 	@Nullable
