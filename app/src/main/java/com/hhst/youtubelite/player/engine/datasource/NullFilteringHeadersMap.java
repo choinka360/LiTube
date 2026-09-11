@@ -3,209 +3,31 @@ package com.hhst.youtubelite.player.engine.datasource;
 import androidx.annotation.NonNull;
 
 import com.google.common.collect.ForwardingMap;
-import com.google.common.collect.ForwardingSet;
 
-import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Set;
 
-/**
- * Component that handles app logic.
- */
+/** HTTP response headers without HttpURLConnection's null-key status line. */
 public final class NullFilteringHeadersMap extends ForwardingMap<String, List<String>> {
-	private final Map<String, List<String>> headers;
+    private final Map<String, List<String>> headers;
 
-	public NullFilteringHeadersMap(final Map<String, List<String>> headers) {
-		this.headers = headers;
-	}
+    public NullFilteringHeadersMap(final Map<String, List<String>> headers) {
+        // Filter once so every map view has consistent size and contents. Custom
+        // toArray implementations using new ArrayList<>(this) recurse indefinitely.
+        Map<String, List<String>> filtered = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
+            if (entry.getKey() != null) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        this.headers = Collections.unmodifiableMap(filtered);
+    }
 
-	@NonNull
-	@Override
-	protected Map<String, List<String>> delegate() {
-		return headers;
-	}
-
-	@Override
-	public boolean containsKey(Object key) {
-		return key != null && super.containsKey(key);
-	}
-
-	@Override
-	public List<String> get(Object key) {
-		return key == null ? null : super.get(key);
-	}
-
-	@NonNull
-	@Override
-	public Set<String> keySet() {
-		return new NullFilteringSet(super.keySet());
-	}
-
-	@NonNull
-	@Override
-	public Set<Entry<String, List<String>>> entrySet() {
-		return new NullFilteringEntrySet(super.entrySet());
-	}
-
-/**
- * Component that handles app logic.
- */
-	private static final class NullFilteringSet extends ForwardingSet<String> {
-		private final Set<String> delegate;
-
-		NullFilteringSet(final Set<String> delegate) {
-			this.delegate = delegate;
-		}
-
-		@NonNull
-		@Override
-		protected Set<String> delegate() {
-			return delegate;
-		}
-
-		@NonNull
-		@Override
-		public Iterator<String> iterator() {
-			return new NullFilteringIterator<>(super.iterator());
-		}
-
-		@NonNull
-		@Override
-		public Object[] toArray() {
-			return filteredElements().toArray();
-		}
-
-		@NonNull
-		@Override
-		public <T> T[] toArray(@NonNull T[] array) {
-			return filteredElements().toArray(array);
-		}
-
-		@NonNull
-		private List<String> filteredElements() {
-			return new ArrayList<>(this);
-		}
-	}
-
-/**
- * Component that handles app logic.
- */
-	private static final class NullFilteringEntrySet extends ForwardingSet<Entry<String, List<String>>> {
-		private final Set<Entry<String, List<String>>> delegate;
-
-		NullFilteringEntrySet(final Set<Entry<String, List<String>>> delegate) {
-			this.delegate = delegate;
-		}
-
-		@NonNull
-		@Override
-		protected Set<Entry<String, List<String>>> delegate() {
-			return delegate;
-		}
-
-		@NonNull
-		@Override
-		public Iterator<Entry<String, List<String>>> iterator() {
-			return new NullFilteringEntryIterator(super.iterator());
-		}
-
-		@NonNull
-		@Override
-		public Object[] toArray() {
-			return filteredElements().toArray();
-		}
-
-		@NonNull
-		@Override
-		public <T> T[] toArray(@NonNull T[] array) {
-			return filteredElements().toArray(array);
-		}
-
-		@NonNull
-		private List<Entry<String, List<String>>> filteredElements() {
-			return new ArrayList<>(this);
-		}
-	}
-
-/**
- * Component that handles app logic.
- */
-	private static final class NullFilteringIterator<T> implements Iterator<T> {
-		private final Iterator<T> delegate;
-		private T next;
-
-		NullFilteringIterator(final Iterator<T> delegate) {
-			this.delegate = delegate;
-			advance();
-		}
-
-		private void advance() {
-			while (delegate.hasNext()) {
-				next = delegate.next();
-				if (next != null) return;
-			}
-			next = null;
-		}
-
-		@Override
-		public boolean hasNext() {
-			return next != null;
-		}
-
-		@Override
-		public T next() {
-			if (next == null) throw new NoSuchElementException();
-			T result = next;
-			advance();
-			return result;
-		}
-
-		@Override
-		public void remove() {
-			throw new UnsupportedOperationException();
-		}
-	}
-
-/**
- * Component that handles app logic.
- */
-	private static final class NullFilteringEntryIterator implements Iterator<Entry<String, List<String>>> {
-		private final Iterator<Entry<String, List<String>>> delegate;
-		private Entry<String, List<String>> next;
-
-		NullFilteringEntryIterator(final Iterator<Entry<String, List<String>>> delegate) {
-			this.delegate = delegate;
-			advance();
-		}
-
-		private void advance() {
-			while (delegate.hasNext()) {
-				next = delegate.next();
-				if (next != null && next.getKey() != null) return;
-			}
-			next = null;
-		}
-
-		@Override
-		public boolean hasNext() {
-			return next != null;
-		}
-
-		@Override
-		public Entry<String, List<String>> next() {
-			if (next == null) throw new NoSuchElementException();
-
-			final Entry<String, List<String>> result = next;
-			advance();
-			return result;
-		}
-
-		@Override
-		public void remove() {
-			throw new UnsupportedOperationException();
-		}
-	}
+    @NonNull
+    @Override
+    protected Map<String, List<String>> delegate() {
+        return headers;
+    }
 }

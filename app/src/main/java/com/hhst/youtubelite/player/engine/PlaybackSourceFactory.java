@@ -54,6 +54,7 @@ class PlaybackSourceFactory {
 		MediaSource base = switch (plan.getMode()) {
 			case LIVE_DASH -> sources.liveYoutubeDashFactory().createMediaSource(buildItem(plan, true));
 			case LIVE_HLS -> sources.liveHlsFactory().createMediaSource(buildItem(plan, true));
+			case VOD_HLS -> sources.vodHlsFactory(plan.getDelivery().getManifest().getSourceClient()).createMediaSource(buildItem(plan, false));
 			case ADAPTIVE -> merge(
 							createStreamSource(sources, plan.getVideoCandidate() != null ? plan.getVideoCandidate().getVideoStream() : null, duration, false),
 							createStreamSource(sources, plan.getAudioCandidate() != null ? plan.getAudioCandidate().getAudioStream() : null, duration, false));

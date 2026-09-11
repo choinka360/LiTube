@@ -105,6 +105,7 @@ public class LitePlayer {
 	@Getter
 	private boolean inMiniPlayer;
 	private boolean wasInPip;
+	private boolean streamRefreshAttempted;
 
 	@Inject
 	public LitePlayer(@NonNull Activity activity,
@@ -173,12 +174,58 @@ public class LitePlayer {
 
 			@Override
 			public void onPlayerError(@NonNull PlaybackException error) {
+				if (refreshRejectedStream(error)) {
+					return;
+				}
 				if (engine.recoverFromPlaybackError(error)) {
 					return;
 				}
 				ErrorDialog.show(activity, error.getMessage(), error);
 			}
 		});
+	}
+
+	private boolean refreshRejectedStream(@NonNull PlaybackException error) {
+		String videoId = activeId;
+		if (videoId == null
+				|| !Objects.equals(queuedId, videoId) || !Engine.isForbiddenPlaybackError(error)) {
+			return false;
+		}
+		if (streamRefreshAttempted) return extractSession != null;
+		streamRefreshAttempted = true;
+		long position = Math.max(0L, engine.position());
+		float speed = engine.getPlaybackRate();
+		cancelExtraction();
+		ExtractionSession session = new ExtractionSession();
+		extractSession = session;
+		task = extractor.refreshInfo("https://www.youtube.com/watch?v=" + videoId, session)
+				.handle((details, failure) -> {
+					activity.runOnUiThread(() -> {
+						if (extractSession != session || session.isCancelled()
+								|| !Objects.equals(activeId, videoId) || !Objects.equals(queuedId, videoId)
+								|| activity.isFinishing() || activity.isDestroyed()) return;
+						extractSession = null;
+						if (failure == null) {
+							try {
+								String language = kv.decodeString(KEY_LAST_AUDIO_LANG, "und");
+								PlaybackPlan plan = PlaybackPlanner.plan(details.deliveries(), prefs.getPreferredQuality(), language);
+								engine.resumeWithFreshDetails(new PlaybackDetails(details.video(), details.catalog(),
+										details.deliveries(), plan, details.segments(), details.subtitles()),
+										position, speed, engine.getPlayWhenReady());
+								return;
+							} catch (RuntimeException resumeError) {
+								error.addSuppressed(resumeError);
+							}
+						} else {
+							error.addSuppressed(failure);
+						}
+						if (!engine.recoverFromPlaybackError(error)) {
+							ErrorDialog.show(activity, error.getMessage(), error);
+						}
+					});
+					return null;
+				});
+		return true;
 	}
 
 	private void saveSelectedTrackLanguage(Tracks tracks) {
@@ -224,6 +271,7 @@ public class LitePlayer {
 		String videoId = YoutubeExtractor.getVideoId(url);
 		if (videoId == null || Objects.equals(this.queuedId, videoId)) return;
 		this.queuedId = videoId;
+		streamRefreshAttempted = false;
 
 		activity.runOnUiThread(() -> {
 			engine.clear();

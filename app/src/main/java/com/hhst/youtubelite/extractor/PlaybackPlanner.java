@@ -54,6 +54,12 @@ public final class PlaybackPlanner {
 			return plan;
 		}
 
+        Delivery vodHls = deliveries.first(PlaybackMode.VOD_HLS);
+        if (vodHls != null) {
+            plan.setMode(PlaybackMode.VOD_HLS);
+            plan.setDelivery(vodHls);
+            return plan;
+        }
 		Delivery adaptive = deliveries.first(PlaybackMode.ADAPTIVE);
 		if (adaptive != null) {
 			PlaybackPlan adaptivePlan = adaptivePlan(plan, adaptive, preferredQuality, preferredAudioLanguage);

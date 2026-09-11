@@ -6,6 +6,7 @@ package com.hhst.youtubelite.extractor;
 public enum PlaybackMode {
 	LIVE_DASH,
 	LIVE_HLS,
+	VOD_HLS,
 	ADAPTIVE,
 	MUXED,
 	AUDIO_ONLY,

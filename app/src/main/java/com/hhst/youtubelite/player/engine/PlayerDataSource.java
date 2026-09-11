@@ -55,7 +55,15 @@ final class PlayerDataSource {
 	}
 
 	@NonNull
-	HlsMediaSource.Factory liveHlsFactory() {
+	HlsMediaSource.Factory vodHlsFactory(String client) {
+        if (!"VISIONOS".equals(client)) return liveHlsFactory();
+        return new HlsMediaSource.Factory(new DefaultHttpDataSource.Factory()
+                .setUserAgent(com.hhst.youtubelite.extractor.VisionOsHls.USER_AGENT)
+                .setConnectTimeoutMs(30_000).setReadTimeoutMs(45_000));
+    }
+
+    @NonNull
+    HlsMediaSource.Factory liveHlsFactory() {
 		return new HlsMediaSource.Factory(liveHttp)
 						.setAllowChunklessPreparation(true);
 	}

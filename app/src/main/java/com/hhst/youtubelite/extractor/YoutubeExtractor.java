@@ -59,6 +59,7 @@ interface Fetch {
 public final class YoutubeExtractor {
 	@NonNull
 	private final Fetch play;
+	@Nullable private VisionOsHls visionOsHls;
 	@NonNull
 	private final Fetch info;
 	@NonNull
@@ -95,6 +96,7 @@ public final class YoutubeExtractor {
 						executor,
 						gson,
 						auth);
+		this.visionOsHls = new VisionOsHls(downloader);
 		NewPipe.init(downloader);
 		YoutubeStreamExtractor.setPoTokenProvider(litePoTokenProvider);
 		YoutubeStreamExtractor.setClientProfileProvider(profiles);
@@ -188,14 +190,30 @@ public final class YoutubeExtractor {
 	}
 
 	@NonNull
+	public CompletableFuture<PlaybackDetails> refreshInfo(@NonNull String videoUrl,
+	                                                      @Nullable ExtractionSession session) {
+		String videoId = getVideoId(videoUrl);
+		if (videoId == null) {
+			return fail(new IllegalArgumentException("Invalid video URL"));
+		}
+		if (session != null && session.isCancelled()) {
+			return fail(new InterruptedException("Extraction canceled"));
+		}
+		// A rejected media URL must not come back from the two-minute stream cache
+		// or an in-flight normal extraction. Keep this request independently cancelable.
+		return new Task(videoId, true).attach(session);
+	}
+
+	@NonNull
 	private PlaybackDetails load(@NonNull String videoId,
-	                             @NonNull ExtractionSession session)
+	                             @NonNull ExtractionSession session,
+	                             boolean refresh)
 					throws org.schabi.newpipe.extractor.exceptions.ExtractionException,
 					IOException,
 					InterruptedException {
 		ensureNotCancelled(session);
 
-		PlaybackDetails cached = cache.getPlaybackDetails(videoId);
+		PlaybackDetails cached = refresh ? null : cache.getPlaybackDetails(videoId);
 		if (cached != null) {
 			return copy(cached, PlaybackDetails.class);
 		}
@@ -206,7 +224,7 @@ public final class YoutubeExtractor {
 				ExtractedInfo extracted = play.fetch(videoId, session);
 				StreamInfo streamInfo = extracted.info();
 				ensureNotCancelled(session);
-				StreamCatalog catalog = buildCatalog(streamInfo, extracted.youtube());
+				StreamCatalog catalog = buildCatalog(streamInfo, extracted.youtube(), session);
 				DeliveryCatalog deliveries = buildDeliveries(catalog);
 				PlaybackPlan plan = PlaybackPlanner.plan(deliveries);
 				PlaybackDetails details = new PlaybackDetails(
@@ -233,7 +251,7 @@ public final class YoutubeExtractor {
 						? null
 						: Date.from(streamInfo.getUploadDate().getInstant());
 		String thumbnailUrl = getBestImageUrl(streamInfo.getThumbnails());
-		StreamCatalog catalog = buildCatalog(streamInfo, extracted.youtube());
+		StreamCatalog catalog = buildCatalog(streamInfo, extracted.youtube(), session);
 		DeliveryCatalog deliveries = buildDeliveries(catalog);
 		PlaybackPlan plan = PlaybackPlanner.plan(deliveries);
 		PlaybackDetails details = new PlaybackDetails(
@@ -282,12 +300,17 @@ public final class YoutubeExtractor {
 
 	@NonNull
 	private StreamCatalog buildCatalog(@NonNull StreamInfo streamInfo,
-	                                   @Nullable YoutubeStreamExtractor youtube) {
+	                                   @Nullable YoutubeStreamExtractor youtube, ExtractionSession session) {
 		StreamCatalog catalog = new StreamCatalog();
 		catalog.setStreamType(streamInfo.getStreamType());
 		boolean live = isLive(streamInfo.getStreamType());
 
-		if (youtube != null) {
+		if (!live && visionOsHls != null) {
+            String manifest = visionOsHls.fetch(streamInfo.getId(), session);
+            if (manifest != null) catalog.getManifestCandidates().add(
+                    StreamCandidate.hlsManifest(manifest, "VISIONOS", false, false, false));
+        }
+        if (youtube != null) {
 			addManifestChoices(catalog, youtube.getDashManifestChoices(), true, live);
 			addManifestChoices(catalog, youtube.getHlsManifestChoices(), false, live);
 			addVideoChoices(catalog.getVideoCandidates(), youtube.getVideoOnlyStreamChoices(), false, live);
@@ -353,6 +376,19 @@ public final class YoutubeExtractor {
 			}
 			return deliveries;
 		}
+        // On-demand HLS is a separate delivery too. Discarding these manifests
+        // forced playback through progressive URLs even when YouTube rejected them.
+        for (StreamCandidate manifest : catalog.getManifestCandidates()) {
+            if (manifest.getKind() != StreamCandidateKind.HLS_MANIFEST) continue;
+            Delivery delivery = new Delivery();
+            delivery.setMode(PlaybackMode.VOD_HLS);
+            delivery.setStreamType(catalog.getStreamType());
+            delivery.setManifest(manifest);
+            delivery.setAbr(true);
+            delivery.setTrackLock(false);
+            delivery.setCache(false);
+            deliveries.getItems().add(delivery);
+        }
 		if (!catalog.getVideoCandidates().isEmpty() && !catalog.getAudioCandidates().isEmpty()) {
 			Delivery delivery = new Delivery();
 			delivery.setMode(PlaybackMode.ADAPTIVE);
@@ -699,10 +735,14 @@ public final class YoutubeExtractor {
 		private final AtomicInteger refs = new AtomicInteger();
 
 		private Task(@NonNull String videoId) {
+			this(videoId, false);
+		}
+
+		private Task(@NonNull String videoId, boolean refresh) {
 			this.root = new ExtractionSession(auth.create("https://www.youtube.com/watch?v=" + videoId));
 			this.base = CompletableFuture.supplyAsync(() -> {
 				try {
-					return load(videoId, root);
+					return load(videoId, root, refresh);
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
 					throw new CompletionException(e);

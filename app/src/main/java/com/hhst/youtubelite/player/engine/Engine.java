@@ -331,6 +331,7 @@ public class Engine {
 	public void play(@NonNull PlaybackDetails details) {
 		VideoDetails video = details.video();
 		PlaybackPlan plan = details.plan();
+		Log.d(TAG, "playing delivery=" + plan.getMode());
 		List<SubtitlesStream> subtitles = details.subtitles();
 		if (!Objects.equals(this.videoId, video.getId())) {
 			failedAdaptiveCandidates.clear();
@@ -372,13 +373,48 @@ public class Engine {
 		this.player.play();
 	}
 
+	public boolean getPlayWhenReady() {
+		return player.getPlayWhenReady();
+	}
+
+	public void resumeWithFreshDetails(@NonNull PlaybackDetails details, long position,
+	                                   float speed, boolean playWhenReady) {
+		failedAdaptiveCandidates.clear();
+		play(details);
+		// The new timeline may not have a duration yet. Do not clamp the saved
+		// position against TIME_UNSET, or use the older persisted resume position.
+		player.seekTo(Math.max(0L, position));
+		player.setPlaybackParameters(new PlaybackParameters(speed));
+		player.setPlayWhenReady(playWhenReady);
+	}
+
+	public static boolean isForbiddenPlaybackError(@NonNull Throwable error) {
+		return playbackRecoveryReason(error) == PlaybackRecoveryReason.HTTP_403;
+	}
+
 	public boolean recoverFromPlaybackError(@NonNull PlaybackException error) {
 		PlaybackRecoveryReason reason = playbackRecoveryReason(error);
 		if (reason == null) {
 			return false;
 		}
 		State state = state();
-		if (state == null || state.plan().getMode() != PlaybackMode.ADAPTIVE) {
+		if (state != null && state.plan().getMode() == PlaybackMode.VOD_HLS) {
+            failedAdaptiveCandidates.add(candidateKey(state.plan().getDelivery().getManifest()));
+            for (Delivery delivery : state.deliveries().getItems()) {
+                if (delivery.getMode() != PlaybackMode.VOD_HLS
+                        || isFailedAdaptiveCandidate(delivery.getManifest())) continue;
+                PlaybackPlan fallback = new PlaybackPlan();
+                fallback.setMode(PlaybackMode.VOD_HLS);
+                fallback.setStreamType(state.plan().getStreamType());
+                fallback.setDelivery(delivery);
+                return recoverWithPlan(state, fallback, reason, false);
+            }
+            PlaybackPlan fallback = PlaybackPlanner.adaptiveFallbackPlan(state.deliveries(),
+                    prefs.getPreferredQuality(), null, this::isFailedAdaptiveCandidate);
+            if (fallback == null) fallback = PlaybackPlanner.muxedFallbackPlan(state.deliveries(), prefs.getPreferredQuality());
+            return fallback != null && recoverWithPlan(state, fallback, reason, false);
+        }
+        if (state == null || state.plan().getMode() != PlaybackMode.ADAPTIVE) {
 			return false;
 		}
 		rememberFailedAdaptiveCandidates(state.plan());
@@ -664,7 +700,7 @@ public class Engine {
 
 	public List<String> getAvailableResolutions() {
 		List<String> resolutions = new ArrayList<>();
-		if (streamCatalog != null) {
+		if (streamCatalog != null && (playbackPlan == null || playbackPlan.getMode() != PlaybackMode.VOD_HLS)) {
 			for (VideoStream stream : PlayerUtils.filterBestStreams(streamCatalog.getVideoStreams())) {
 				String res = stream.getResolution();
 				if (!resolutions.contains(res)) resolutions.add(res);
@@ -676,7 +712,7 @@ public class Engine {
 				if (group.getType() == C.TRACK_TYPE_VIDEO) {
 					for (int i = 0; i < group.length; i++) {
 						Format format = group.getTrackFormat(i);
-						if (format.height != Format.NO_VALUE) {
+						if (format.height != Format.NO_VALUE && group.isTrackSupported(i)) {
 							String res = format.height + "p";
 							if (!resolutions.contains(res)) resolutions.add(res);
 						}
@@ -689,13 +725,22 @@ public class Engine {
 
 	public void onQualitySelected(@Nullable String res) {
 		if (res == null) return;
+		// Keep the active HLS delivery, including one selected during recovery.
+		// A manual quality is an exact track choice, not an ABR ceiling.
+		if (playbackPlan != null && playbackPlan.getMode() == PlaybackMode.VOD_HLS) {
+			prefs.setPreferredQuality(res);
+			applyPlaybackTrackMode();
+			return;
+		}
 		State state = state();
 		if (state == null) return;
 		prefs.setPreferredQuality(res);
 		PlaybackPlan plan = PlaybackPlanner.plan(state.deliveries(), res, null);
 		this.playbackPlan = plan;
 		Delivery delivery = plan.getDelivery();
-		if (isLiveMode(plan) && delivery != null && !delivery.isTrackLock()) {
+		if ((isLiveMode(plan) || plan.getMode() == PlaybackMode.VOD_HLS)
+				&& delivery != null && !delivery.isTrackLock()
+				&& delivery == state.plan().getDelivery()) {
 			applyPlaybackTrackMode();
 			return;
 		}
@@ -734,7 +779,7 @@ public class Engine {
 
 	private void applyPreferredVideoTrack() {
 		PlaybackPlan plan = playbackPlan;
-		if (plan == null || plan.getDelivery() == null || !plan.getDelivery().isTrackLock()) {
+		if (plan == null || plan.getDelivery() == null || (!plan.getDelivery().isTrackLock() && plan.getMode() != PlaybackMode.VOD_HLS)) {
 			return;
 		}
 		String quality = prefs.getPreferredQuality();
@@ -748,6 +793,11 @@ public class Engine {
 	}
 
 	private void applyPlaybackTrackMode() {
+		int requestedHeight = StringUtils.parseHeight(prefs.getPreferredQuality());
+		if (playbackPlan != null && playbackPlan.getMode() == PlaybackMode.VOD_HLS && requestedHeight > 0) {
+			setVideoQuality(requestedHeight);
+			return;
+		}
 		DefaultTrackSelector trackSelector = trackSelector();
 		final DefaultTrackSelector.Parameters.Builder builder = params(trackSelector)
 						.clearOverridesOfType(C.TRACK_TYPE_VIDEO)

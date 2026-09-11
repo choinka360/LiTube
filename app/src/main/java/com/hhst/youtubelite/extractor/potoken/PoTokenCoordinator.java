@@ -108,7 +108,11 @@ public final class PoTokenCoordinator {
 				return null;
 			}
 
-			return mintClientPoToken(hostGeneration, videoId, visitorData);
+			String binding = streamingIdentifier(getAuth(), visitorData);
+            android.util.Log.d("YTLPlayback", "token session loggedIn="
+                    + (getAuth() != null && getAuth().loggedIn())
+                    + " accountBinding=" + (getAuth() != null && getAuth().dataSyncId() != null));
+            return binding == null ? null : mintClientPoToken(hostGeneration, videoId, visitorData, binding);
 		}
 	}
 
@@ -134,10 +138,10 @@ public final class PoTokenCoordinator {
 	@Nullable
 	private PoTokenResult mintClientPoToken(long hostGeneration,
 	                                        @NonNull String videoId,
-	                                        @NonNull String visitorData) {
+	                                        @NonNull String visitorData, @NonNull String streamingIdentifier) {
 		String playerPoToken = mintPoToken(hostGeneration, videoId);
 		String streamingPoToken = playerPoToken != null
-						? mintPoToken(hostGeneration, visitorData)
+						? mintPoToken(hostGeneration, streamingIdentifier)
 						: null;
 		if (playerPoToken == null || streamingPoToken == null) {
 			PoTokenSession active = initializeSession(hostGeneration);
@@ -147,14 +151,14 @@ public final class PoTokenCoordinator {
 			}
 			playerPoToken = mintPoToken(hostGeneration, videoId);
 			streamingPoToken = playerPoToken != null
-							? mintPoToken(hostGeneration, visitorData)
+							? mintPoToken(hostGeneration, streamingIdentifier)
 							: null;
 		}
 		if (playerPoToken == null) {
 			return null;
 		}
 		if (streamingPoToken == null) {
-			streamingPoToken = playerPoToken;
+			return null;
 		}
 		return new PoTokenResult(
 						visitorData,
@@ -162,6 +166,16 @@ public final class PoTokenCoordinator {
 						streamingPoToken);
 	}
 
+    @Nullable
+    static String streamingIdentifier(@Nullable AuthContext auth, @NonNull String visitorData) {
+        // GVS tokens for signed-in playback are bound to the account session,
+        // while anonymous playback uses visitor data. Player tokens use videoId.
+        if (auth != null && auth.loggedIn()) {
+            String id = auth.dataSyncId();
+            return id == null || id.isBlank() ? null : id;
+        }
+        return visitorData;
+    }
 	@Nullable
 	private PoTokenResult load(@NonNull String client,
 	                           @NonNull String videoId) {

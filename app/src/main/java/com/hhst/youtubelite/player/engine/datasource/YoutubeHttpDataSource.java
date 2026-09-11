@@ -153,6 +153,14 @@ public final class YoutubeHttpDataSource extends BaseDataSource implements HttpD
 			httpURLConnection = this.connection;
 			responseCode = httpURLConnection.getResponseCode();
 			responseMessage = httpURLConnection.getResponseMessage();
+            Uri requestUri = dataSpecParameter.uri;
+            Log.d(TAG, "stream response=" + responseCode
+                    + " client=" + requestUri.getQueryParameter("c")
+                    + " itag=" + requestUri.getQueryParameter("itag")
+                    + " token=" + (requestUri.getQueryParameter("pot") != null)
+                    + " position=" + dataSpecParameter.position
+                    + " length=" + dataSpecParameter.length
+                    + " queryRange=" + rangeParameterEnabled);
 		} catch (IOException e) {
 			closeConnectionQuietly();
 			throw HttpDataSourceException.createForIOException(e, dataSpec, HttpDataSourceException.TYPE_OPEN);
@@ -382,7 +390,8 @@ public final class YoutubeHttpDataSource extends BaseDataSource implements HttpD
 			if (read == -1)
 				throw new HttpDataSourceException(dataSpec, PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE, HttpDataSourceException.TYPE_OPEN);
 			bytesSkipped += read;
-			bytesRead += read;
+			// bytesToRead already excludes the skipped prefix. Only count delivered bytes.
+			bytesTransferred(read);
 		}
 	}
 
