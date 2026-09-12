@@ -15,12 +15,14 @@ class PlayerLoadControl {
 	static DefaultLoadControl create() {
 		return new DefaultLoadControl.Builder()
 						.setBufferDurationsMs(
-										50_000,
-										60_000,
-										1_500,
-										4_000
+										90_000,
+										120_000,
+										2_500,
+										8_000
 						)
-						.setPrioritizeTimeOverSizeThresholds(true)
+						// Keep more network reserve without letting HD buffering exhaust the heap.
+						.setTargetBufferBytes(64 * 1024 * 1024)
+						.setPrioritizeTimeOverSizeThresholds(false)
 						.build();
 	}
 }
