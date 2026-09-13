@@ -5,6 +5,8 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="sharedpref" path="litube_cast.xml" />
+        <exclude domain="sharedpref" path="litube_account.xml" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -16,4 +18,6 @@
         <exclude .../>
     </device-transfer>
     -->
+    <device-transfer><exclude domain="sharedpref" path="litube_cast.xml" />
+        <exclude domain="sharedpref" path="litube_account.xml" /></device-transfer>
 </data-extraction-rules>

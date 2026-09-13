@@ -137,7 +137,7 @@
     <string name="failed_to_check_for_updates">Failed to check for updates</string>
     <string name="clear_cache_confirmation">Are you sure you want to clear app cache?</string>
     <string name="clear">Clear</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">Download tasks added</string>
     <string name="download_tasks_added_count" tools:ignore="PluralsCandidate">%1$d tasks added to queue</string>
     <string name="download_history">Downloads</string>

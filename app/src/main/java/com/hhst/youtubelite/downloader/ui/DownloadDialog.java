@@ -625,7 +625,7 @@ public class DownloadDialog {
 
 	@NonNull
 	private static String videoDownloadKey(@NonNull VideoStream stream) {
-		return String.valueOf(stream.getResolution()).trim() + "|"
+		return stream.getResolution().trim() + "|"
 						+ Math.max(stream.getFps(), 0) + "|"
 						+ stream.getFormat();
 	}

@@ -434,15 +434,15 @@ public class Controller {
 			if (getCenterPrimaryAction().restartsCurrentItem()) {
 				engine.seekTo(0);
 			}
-			engine.play();
+			engine.playFromControls();
 			setControlsVisible(true);
 		});
 		setClick(R.id.btn_mini_play, v -> {
-			engine.play();
+			engine.playFromControls();
 			setControlsVisible(true);
 		});
 		setClicks(new int[]{R.id.btn_pause, R.id.btn_mini_pause}, v -> {
-			engine.pause();
+			engine.pauseFromControls();
 			setControlsVisible(true);
 		});
 		setClicks(new int[]{R.id.btn_prev, R.id.btn_mini_prev}, v -> {
@@ -671,6 +671,15 @@ public class Controller {
 							new FrameLayout(activity),
 							false);
 			bottomSheetDialog.setContentView(bottomSheetView);
+            bottomSheetView.findViewById(R.id.option_cast_tv).setOnClickListener(cast -> {
+                android.content.Intent intent = new android.content.Intent(activity, com.hhst.youtubelite.cast.CastActivity.class);
+                String id = engine.getCurrentVideoId();
+                if (id != null) intent.putExtra("url", "https://www.youtube.com/watch?v=" + id);
+                intent.putExtra("positionMs", engine.position());
+                engine.pause();
+                bottomSheetDialog.dismiss();
+                activity.startActivity(intent);
+            });
 
 			FrameLayout bottomSheet = bottomSheetDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
 			if (bottomSheet != null) {
@@ -1384,4 +1393,3 @@ public class Controller {
 
 
 }
-

@@ -78,6 +78,13 @@ import dagger.hilt.android.scopes.ActivityScoped;
 @ActivityScoped
 public class Engine {
 	private static final String TAG = "YTLPlayback";
+    private final com.hhst.youtubelite.cast.CastSession castSession;
+    private final Set<Player.Listener> controlListeners = new HashSet<>();
+    private final Runnable castChanged = this::onCastChanged;
+    private void onCastChanged() {
+        if (castSession.controls(videoId)) player.pause();
+        for (Player.Listener listener : new ArrayList<>(controlListeners)) listener.onIsPlayingChanged(isPlaying());
+    }
 	static final String NO_PLAYABLE_SOURCE_MESSAGE = "No supported playable stream URL in StreamCatalog";
 	private static final int SAFE_ZONE_MS = 5000;
 	@NonNull
@@ -145,7 +152,8 @@ public class Engine {
 	              @NonNull TabManager tabManager,
 	              @NonNull SponsorBlockManager sponsor,
 	              @NonNull QueueRepository queueRepository) {
-		this.prefs = prefs;
+		this.castSession = com.hhst.youtubelite.cast.CastSession.get(context);
+        this.prefs = prefs;
 		this.tabManager = tabManager;
 		this.sponsor = sponsor;
 		this.queueRepository = queueRepository;
@@ -203,6 +211,7 @@ public class Engine {
 			}
 		});
 		playerView.setPlayer(this.player);
+        castSession.addListener(castChanged);
 	}
 
 	@Nullable
@@ -320,7 +329,7 @@ public class Engine {
 	}
 
 	public boolean isPlaying() {
-		return this.player.isPlaying();
+		return castSession.controls(videoId) ? castSession.playing() : this.player.isPlaying();
 	}
 
 	public boolean isCurrentVideoInQueue() {
@@ -366,10 +375,16 @@ public class Engine {
 		}
 
 		this.player.prepare();
-		this.player.setPlayWhenReady(true);
+		this.player.setPlayWhenReady(!castSession.controls(videoId));
 	}
 
-	public void play() {
+	public void playFromControls() {
+        if (!castSession.setPlaying(videoId, true)) play();
+    }
+    public void pauseFromControls() {
+        if (!castSession.setPlaying(videoId, false)) pause();
+    }
+    public void play() {
 		this.player.play();
 	}
 
@@ -498,6 +513,7 @@ public class Engine {
 
 	public void addListener(@NonNull Player.Listener listener) {
 		this.player.addListener(listener);
+        controlListeners.add(listener);
 	}
 
 	public VideoSize getVideoSize() {
@@ -537,6 +553,8 @@ public class Engine {
 			}
 		}
 	}
+
+	public String getCurrentVideoId() { return videoId; }
 
 	public long position() {
 		return this.player.getCurrentPosition();
@@ -1044,6 +1062,7 @@ public class Engine {
 	}
 
 	public void release() {
+        castSession.removeListener(castChanged); controlListeners.clear();
 		handler.removeCallbacks(onTimeUpdate);
 		this.player.release();
 	}

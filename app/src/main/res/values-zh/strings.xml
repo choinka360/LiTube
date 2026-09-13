@@ -132,7 +132,7 @@
     <string name="failed_to_check_for_updates">检查更新失败</string>
     <string name="clear_cache_confirmation">确定要清除缓存吗？</string>
     <string name="clear">清除</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">下载任务已添加</string>
     <string name="download_tasks_added_count">已添加 %1$d 个任务到队列</string>
     <string name="download_history">下载记录</string>

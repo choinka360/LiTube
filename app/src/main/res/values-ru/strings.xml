@@ -94,7 +94,7 @@
     <string name="failed_to_check_for_updates">Не удалось проверить обновления</string>
     <string name="clear_cache_confirmation">Вы уверены, что хотите очистить кэш приложения?</string>
     <string name="clear">Очистить</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">Задачи на загрузку добавлены</string>
     <string name="download_tasks_added_count">Добавлено %1$d задач в очередь</string>
     <string name="download_history">Загрузки</string>

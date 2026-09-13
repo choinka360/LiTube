@@ -162,9 +162,9 @@ public class PlayerGestureListener extends GestureDetector.SimpleOnGestureListen
 				return true;
 			case TOGGLE_PLAYBACK:
 				if (engine.isPlaying()) {
-					engine.pause();
+					engine.pauseFromControls();
 				} else {
-					engine.play();
+					engine.playFromControls();
 				}
 				controller.setControlsVisible(true);
 				return true;
@@ -313,7 +313,3 @@ public class PlayerGestureListener extends GestureDetector.SimpleOnGestureListen
 		SEEK_FORWARD
 	}
 }
-
-
-
-

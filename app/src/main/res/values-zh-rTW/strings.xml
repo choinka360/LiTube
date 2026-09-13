@@ -118,7 +118,7 @@
     <string name="failed_to_check_for_updates">檢查更新失敗</string>
     <string name="clear_cache_confirmation">確定要清除快取嗎？</string>
     <string name="clear">清除</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">下載任務已添加</string>
     <string name="download_tasks_added_count">已添加 %1$d 個任務到隊列</string>
     <string name="download_history">下載記錄</string>

@@ -6,9 +6,9 @@ Litube is an advanced webview wrapper for YouTube.
 ## Releases
 See the following release notes for details.
 
-**Latest Release: [v2.1.4](https://github.com/HydeYYHH/litube/releases/latest)**
+**Latest Release: [v2.1.4](https://github.com/choinka360/LiTube/releases/latest)**
 
-**Important Releases: [v2.1.0](https://github.com/HydeYYHH/litube/releases/tag/v2.1.0), [v2.0.0](https://github.com/HydeYYHH/litube/releases/tag/v2.0.0)**
+**Important Releases: [v2.1.0](https://github.com/choinka360/LiTube/releases/tag/v2.1.0), [v2.0.0](https://github.com/choinka360/LiTube/releases/tag/v2.0.0)**
 
 ## Features
 * [x] **Ad-free playback**
@@ -21,7 +21,7 @@ See the following release notes for details.
 
 ## Screenshots
 
-<img title="" src="https://github.com/HydeYYHH/litube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="" width="200"><img title="" src="https://github.com/HydeYYHH/litube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.jpg" alt="" width="200"><img title="" src="https://github.com/HydeYYHH/litube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" alt="" width="200">
+<img title="" src="https://github.com/choinka360/LiTube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="" width="200"><img title="" src="https://github.com/choinka360/LiTube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.jpg" alt="" width="200"><img title="" src="https://github.com/choinka360/LiTube/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" alt="" width="200">
 
 
 ## Contributing

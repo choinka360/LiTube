@@ -137,7 +137,7 @@
     <string name="failed_to_check_for_updates">Error al buscar actualizaciones</string>
     <string name="clear_cache_confirmation">¿Estás seguro de que quieres borrar la caché de la aplicación?</string>
     <string name="clear">Borrar</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">Tareas de descarga añadidas</string>
     <string name="download_tasks_added_count" tools:ignore="PluralsCandidate">%1$d tareas añadidas a la cola</string>
     <string name="download_history">Descargas</string>

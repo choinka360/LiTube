@@ -180,7 +180,7 @@ public class LitePlayer {
 				if (engine.recoverFromPlaybackError(error)) {
 					return;
 				}
-				ErrorDialog.show(activity, error.getMessage(), error);
+				showPlaybackError(error);
 			}
 		});
 	}
@@ -220,7 +220,7 @@ public class LitePlayer {
 							error.addSuppressed(failure);
 						}
 						if (!engine.recoverFromPlaybackError(error)) {
-							ErrorDialog.show(activity, error.getMessage(), error);
+							showPlaybackError(error);
 						}
 					});
 					return null;
@@ -347,15 +347,21 @@ public class LitePlayer {
 								Throwable error = cause;
 								activity.runOnUiThread(() -> {
 									if (!Objects.equals(this.queuedId, videoId)) return;
-									ErrorDialog.show(activity, error.getMessage(), error);
+									showPlaybackError(error);
 								});
 							}
 							return null;
 						});
 	}
+    private void showPlaybackError(Throwable error) {
+        if (error instanceof com.hhst.youtubelite.extractor.exception.VideoUnavailableException) {
+            new android.app.AlertDialog.Builder(activity).setTitle("Video unavailable")
+                    .setMessage(error.getMessage()).setPositiveButton("OK", null).show();
+        } else ErrorDialog.show(activity, error.getMessage(), error);
+    }
 
-	@NonNull
-	private ExtractionException classifyException(@NonNull Exception exception) {
+    @NonNull
+    private ExtractionException classifyException(@NonNull Exception exception) {
 		return classifyExtractionException(exception);
 	}
 
@@ -394,7 +400,12 @@ public class LitePlayer {
 		org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException unavailable =
 						firstException(exception, org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException.class);
 		if (unavailable != null) {
-			return new ExtractionException(messageOrDefault(unavailable, "This video is not available."), exception);
+			String message = messageOrDefault(unavailable, "This video is not available.");
+            if (message.contains("LIVE_STREAM_OFFLINE")) {
+                int firstQuote = message.indexOf('"'), lastQuote = message.lastIndexOf('"');
+                message = firstQuote >= 0 && lastQuote > firstQuote ? message.substring(firstQuote + 1, lastQuote) : "This live stream or premiere has not started, or is currently offline.";
+            }
+            return new com.hhst.youtubelite.extractor.exception.VideoUnavailableException(message, exception);
 		}
 		org.schabi.newpipe.extractor.exceptions.ExtractionException extraction =
 						firstException(exception, org.schabi.newpipe.extractor.exceptions.ExtractionException.class);

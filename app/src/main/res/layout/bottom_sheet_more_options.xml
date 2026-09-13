@@ -6,6 +6,9 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <Button android:id="@+id/option_cast_tv"
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:text="Cast to TV" android:textAllCaps="false" />
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

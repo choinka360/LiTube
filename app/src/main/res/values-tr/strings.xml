@@ -118,7 +118,7 @@
     <string name="failed_to_check_for_updates">Güncelleme kontrolü başarısız oldu</string>
     <string name="clear_cache_confirmation">Uygulamanın önbelleğini temizlemek istediğinize emin misiniz?</string>
     <string name="clear">Temizle</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">İndirmeler sıraya eklendi</string>
     <string name="download_tasks_added_count" tools:ignore="PluralsCandidate">%1$d görev indirme sırasına eklendi</string>
     <string name="download_history">İndirilenler</string>

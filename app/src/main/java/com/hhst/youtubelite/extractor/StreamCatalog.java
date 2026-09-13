@@ -25,15 +25,15 @@ public class StreamCatalog {
 	@NonNull
 	private StreamType streamType = StreamType.VIDEO_STREAM;
 	@NonNull
-	private List<StreamCandidate> manifestCandidates = new ArrayList<>();
+	private final List<StreamCandidate> manifestCandidates = new ArrayList<>();
 	@NonNull
-	private List<StreamCandidate> videoCandidates = new ArrayList<>();
+	private final List<StreamCandidate> videoCandidates = new ArrayList<>();
 	@NonNull
-	private List<StreamCandidate> audioCandidates = new ArrayList<>();
+	private final List<StreamCandidate> audioCandidates = new ArrayList<>();
 	@NonNull
-	private List<StreamCandidate> muxedCandidates = new ArrayList<>();
+	private final List<StreamCandidate> muxedCandidates = new ArrayList<>();
 	@NonNull
-	private List<StreamCandidate> subtitleCandidates = new ArrayList<>();
+	private final List<StreamCandidate> subtitleCandidates = new ArrayList<>();
 
 	@NonNull
 	public List<VideoStream> getVideoStreams() {

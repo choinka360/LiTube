@@ -142,12 +142,12 @@ public class PlaybackService extends Service {
 		session.setCallback(new MediaSessionCompat.Callback() {
 			@Override
 			public void onPlay() {
-				engine.play();
+				engine.playFromControls();
 			}
 
 			@Override
 			public void onPause() {
-				engine.pause();
+				engine.pauseFromControls();
 			}
 
 			@Override

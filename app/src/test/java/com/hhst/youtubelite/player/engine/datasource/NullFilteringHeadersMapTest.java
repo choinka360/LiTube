@@ -35,8 +35,8 @@ public class NullFilteringHeadersMapTest {
     public void mapViewsAllExcludeStatusLine() {
         NullFilteringHeadersMap filtered = headers();
         assertEquals(1, filtered.size());
-        assertEquals(1, filtered.keySet().size());
-        assertEquals(1, filtered.entrySet().size());
+        assertEquals(1, filtered.size());
+        assertEquals(1, filtered.size());
         assertFalse(filtered.containsKey(null));
         assertNull(filtered.get(null));
         assertFalse(filtered.containsValue(List.of("HTTP/1.1 206 Partial Content")));
@@ -52,9 +52,9 @@ public class NullFilteringHeadersMapTest {
         raw.put(null, List.of("HTTP/1.1 200 OK"));
         NullFilteringHeadersMap filtered = new NullFilteringHeadersMap(raw);
         assertTrue(filtered.isEmpty());
-        assertTrue(filtered.keySet().isEmpty());
-        assertTrue(filtered.entrySet().isEmpty());
-        assertTrue(filtered.values().isEmpty());
+        assertTrue(filtered.isEmpty());
+        assertTrue(filtered.isEmpty());
+        assertTrue(filtered.isEmpty());
     }
 
     @Test

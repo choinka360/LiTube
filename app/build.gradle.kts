@@ -1,9 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.hilt)
 }
 
+val tvOAuthProperties = Properties().apply {
+    val config = rootProject.file("local.properties")
+    if (config.exists()) config.inputStream().use { load(it) }
+}
+fun tvOAuthValue(name: String): String = "\"" + tvOAuthProperties.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 android {
+    buildFeatures { buildConfig = true }
     namespace = "com.hhst.youtubelite"
     compileSdk = 36
 
@@ -21,8 +30,10 @@ android {
         applicationId = "com.hhst.litube"
         minSdk = 26
         targetSdk = 36
-        versionCode = 214
-        versionName = "v2.1.4"
+        versionCode = 220
+        versionName = "v2.2.0"
+        buildConfigField("String", "TV_GOOGLE_CLIENT_ID", tvOAuthValue("litube.google.clientId"))
+        buildConfigField("String", "TV_GOOGLE_CLIENT_SECRET", tvOAuthValue("litube.google.clientSecret"))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -39,7 +50,8 @@ android {
             )
         }
         debug {
-            versionNameSuffix = " (Playback Fix 4)"
+            versionNameSuffix = " (TV Preview)"
+            if (providers.gradleProperty("litubeValidation").isPresent) applicationIdSuffix = ".validation"
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
@@ -106,4 +118,9 @@ dependencies {
     testImplementation(libs.mockito.core)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+}
+
+// Keep builds consistent between Windows and UTF-8 environments.
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
 }

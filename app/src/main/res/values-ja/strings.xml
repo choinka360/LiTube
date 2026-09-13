@@ -94,7 +94,7 @@
     <string name="failed_to_check_for_updates">アップデートの確認に失敗しました</string>
     <string name="clear_cache_confirmation">アプリのキャッシュを消去してもよろしいですか？</string>
     <string name="clear">消去</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">ダウンロードタスクを追加しました</string>
     <string name="download_tasks_added_count">%1$d 個のタスクをキューに追加しました</string>
     <string name="download_history">ダウンロード履歴</string>

@@ -94,7 +94,7 @@
     <string name="failed_to_check_for_updates">Échec de la vérification des mises à jour</string>
     <string name="clear_cache_confirmation">Êtes-vous sûr de vouloir effacer le cache de l\'application ?</string>
     <string name="clear">Effacer</string>
-    <string name="source_link">https://github.com/HydeYYHH/litube</string>
+    <string name="source_link">https://github.com/choinka360/LiTube</string>
     <string name="download_tasks_added">Tâches de téléchargement ajoutées</string>
     <string name="download_tasks_added_count">%1$d tâches ajoutées à la file d\'attente</string>
     <string name="download_history">Historique de téléchargement</string>
