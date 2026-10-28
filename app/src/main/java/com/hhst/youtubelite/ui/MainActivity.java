@@ -123,6 +123,20 @@ public final class MainActivity extends AppCompatActivity implements LifecycleEv
 	}
 
 	@Override
+	public boolean dispatchKeyEvent(@NonNull android.view.KeyEvent event) {
+		// While casting, the volume keys change the TV's volume.
+		int key = event.getKeyCode();
+		if ((key == android.view.KeyEvent.KEYCODE_VOLUME_UP || key == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
+						&& com.hhst.youtubelite.cast.CastSession.get(this).connected()) {
+			if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+				com.hhst.youtubelite.cast.CastSession.get(this).volume(key == android.view.KeyEvent.KEYCODE_VOLUME_UP ? 1 : -1);
+			}
+			return true;
+		}
+		return super.dispatchKeyEvent(event);
+	}
+
+	@Override
 	protected void onCreate(@Nullable Bundle savedInstanceState) {
 		EdgeToEdge.enable(this);
 		setContentView(R.layout.activity_main);

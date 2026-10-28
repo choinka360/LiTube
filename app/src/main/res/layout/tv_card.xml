@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="224dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="20dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:orientation="vertical">
+
+    <FrameLayout
+        android:id="@+id/tv_card_frame"
+        android:layout_width="224dp"
+        android:layout_height="126dp"
+        android:background="@drawable/tv_card_bg"
+        android:duplicateParentState="true"
+        android:foreground="@drawable/tv_card_focus">
+
+        <ImageView
+            android:id="@+id/tv_card_thumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/tv_card_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="8dp"
+            android:background="@drawable/tv_duration_bg"
+            android:fontFamily="sans-serif-medium"
+            android:paddingHorizontal="5dp"
+            android:paddingVertical="1dp"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tv_card_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:lineSpacingExtra="2dp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:textColor="#F1F1F1"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/tv_card_channel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#AAAAAA"
+        android:textSize="13sp" />
+</LinearLayout>

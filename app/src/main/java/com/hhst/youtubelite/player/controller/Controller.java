@@ -662,6 +662,13 @@ public class Controller {
 	}
 
 	private void setupOverlayAndMoreButtons() {
+		ImageButton castButton = playerView.findViewById(R.id.btn_cast);
+		if (castButton != null) com.hhst.youtubelite.cast.CastPicker.bindButton(castButton);
+		setClick(R.id.btn_cast, v -> {
+			setControlsVisible(true);
+			if (activity.isInPictureInPictureMode()) return;
+			com.hhst.youtubelite.cast.CastPicker.show(activity, engine.getCurrentVideoId(), engine.position(), null);
+		});
 		setClick(R.id.btn_more, v -> {
 			setControlsVisible(true);
 			if (activity.isInPictureInPictureMode()) return;
@@ -671,15 +678,6 @@ public class Controller {
 							new FrameLayout(activity),
 							false);
 			bottomSheetDialog.setContentView(bottomSheetView);
-            bottomSheetView.findViewById(R.id.option_cast_tv).setOnClickListener(cast -> {
-                android.content.Intent intent = new android.content.Intent(activity, com.hhst.youtubelite.cast.CastActivity.class);
-                String id = engine.getCurrentVideoId();
-                if (id != null) intent.putExtra("url", "https://www.youtube.com/watch?v=" + id);
-                intent.putExtra("positionMs", engine.position());
-                engine.pause();
-                bottomSheetDialog.dismiss();
-                activity.startActivity(intent);
-            });
 
 			FrameLayout bottomSheet = bottomSheetDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
 			if (bottomSheet != null) {

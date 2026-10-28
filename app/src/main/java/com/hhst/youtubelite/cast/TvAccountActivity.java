@@ -13,7 +13,7 @@ public class TvAccountActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved); account = new TvGoogleAccount(this);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(64, 40, 64, 40); root.setBackground(TvTheme.background()); root.setClipChildren(false);
-        TextView brand = new TextView(this); brand.setText("LiTube  /  Your account"); brand.setTextSize(28); brand.setTextColor(TvTheme.ACCENT); root.addView(brand);
+        TextView brand = new TextView(this); brand.setText("Account"); brand.setTextSize(30); brand.setTextColor(TvTheme.TEXT); root.addView(brand);
         status = new TextView(this); TvTheme.text(status, false); status.setPadding(0, 24, 0, 24); status.setTextSize(24); status.setText("YouTube account"); root.addView(status);
         TextView help = new TextView(this); TvTheme.text(help, true); help.setPadding(0, 0, 0, 28); help.setTextSize(18); help.setText("Sign in using your phone. LiTube never asks for your Google password.\nAccount connection allows read-only YouTube account access. Google's public API does not provide your personalized Home feed."); root.addView(help);
         signIn = new Button(this); signIn.setText("Sign in with Google"); root.addView(signIn);

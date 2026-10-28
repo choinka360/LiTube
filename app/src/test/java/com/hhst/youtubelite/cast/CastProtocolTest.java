@@ -40,6 +40,31 @@ public class CastProtocolTest {
     @Test public void rejectsRequestSmugglingAndOversizedBodies() {
         for (String headers : new String[]{"Content-Length: 2\r\nContent-Length: 3\r\n", "Content-Length: 2\r\nTransfer-Encoding: chunked\r\n", "Content-Length: 5000\r\n", "Content-Length: -1\r\n"}) assertThrows(IOException.class, () -> read("POST /play HTTP/1.1\r\n" + headers + "\r\n{}"));
     }
+    @Test public void pairingCodeMatchesOnBothScreensAndDependsOnRequest() {
+        String fingerprint = CastProtocol.hash("tv certificate");
+        String nonce = CastProtocol.randomToken();
+        String code = CastProtocol.verificationCode(fingerprint, nonce);
+        assertTrue(code.matches("[0-9]{4}"));
+        assertEquals(code, CastProtocol.verificationCode(fingerprint.toLowerCase(java.util.Locale.ROOT), nonce));
+        boolean differs = false;
+        for (int i = 0; i < 8 && !differs; i++) differs = !code.equals(CastProtocol.verificationCode(fingerprint, CastProtocol.randomToken()));
+        assertTrue("Code must change with each pairing request", differs);
+    }
+    @Test public void advertisedIdMatchesPairingCodePrefix() {
+        String fingerprint = CastProtocol.hash("tv certificate");
+        assertEquals(16, CastProtocol.deviceId(fingerprint).length());
+        assertEquals(CastProtocol.normalizeCode(fingerprint.substring(0, 16)), CastProtocol.deviceId(fingerprint));
+    }
+    @Test public void rememberedTvIsRecognisedByIdentityNotAddress() {
+        CastClient.Device saved = new CastClient.Device(); saved.host = "192.168.1.12"; saved.pin = CastProtocol.hash("tv"); saved.token = CastProtocol.randomToken();
+        CastClient.Device moved = new CastClient.Device(); moved.host = "192.168.1.40"; moved.pin = saved.pin.substring(0, 16);
+        CastClient.Device other = new CastClient.Device(); other.host = "192.168.1.12"; other.pin = CastProtocol.hash("other tv");
+        assertTrue(saved.paired()); assertTrue(saved.sameTv(moved)); assertFalse(saved.sameTv(other));
+    }
+    @Test public void tvCardFormatting() {
+        assertEquals("4:05", TvVideo.clock(245)); assertEquals("1:02:03", TvVideo.clock(3723));
+        assertEquals("999", TvVideo.count(999)); assertEquals("1.2K", TvVideo.count(1234)); assertEquals("15K", TvVideo.count(15_900)); assertEquals("3M", TvVideo.count(3_000_000));
+    }
     @Test public void rejectsTruncationUnsupportedMethodsAndProxyTargets() {
         for (String request : new String[]{"POST /play HTTP/1.1\r\nContent-Length: 3\r\n\r\n{}", "GET /play HTTP/1.1\r\n\r\n", "POST https://example.com HTTP/1.1\r\n\r\n"}) assertThrows(IOException.class, () -> read(request));
     }

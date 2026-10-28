@@ -81,8 +81,16 @@ public class Engine {
     private final com.hhst.youtubelite.cast.CastSession castSession;
     private final Set<Player.Listener> controlListeners = new HashSet<>();
     private final Runnable castChanged = this::onCastChanged;
+    private com.hhst.youtubelite.cast.CastAwarePlayer viewPlayer;
+    private com.hhst.youtubelite.cast.CastOverlay castOverlay;
+    // While connected to a TV, the phone player is its remote and never plays locally.
+    private boolean casting() { return castSession.connected(); }
     private void onCastChanged() {
-        if (castSession.controls(videoId)) player.pause();
+        if (casting()) player.pause();
+        long handoff = castSession.takeHandoff(videoId);
+        if (handoff >= 0) { player.seekTo(handoff); player.play(); }
+        if (castOverlay != null) castOverlay.update();
+        if (viewPlayer != null) viewPlayer.castChanged();
         for (Player.Listener listener : new ArrayList<>(controlListeners)) listener.onIsPlayingChanged(isPlaying());
     }
 	static final String NO_PLAYABLE_SOURCE_MESSAGE = "No supported playable stream URL in StreamCatalog";
@@ -210,8 +218,11 @@ public class Engine {
 				applyPreferredVideoTrack();
 			}
 		});
-		playerView.setPlayer(this.player);
+		this.viewPlayer = new com.hhst.youtubelite.cast.CastAwarePlayer(this.player, castSession);
+		playerView.setPlayer(this.viewPlayer);
+		this.castOverlay = new com.hhst.youtubelite.cast.CastOverlay(playerView, castSession);
         castSession.addListener(castChanged);
+        onCastChanged();
 	}
 
 	@Nullable
@@ -329,7 +340,7 @@ public class Engine {
 	}
 
 	public boolean isPlaying() {
-		return castSession.controls(videoId) ? castSession.playing() : this.player.isPlaying();
+		return casting() ? castSession.playWhenReady() : this.player.isPlaying();
 	}
 
 	public boolean isCurrentVideoInQueue() {
@@ -367,22 +378,27 @@ public class Engine {
 		this.player.setPlaybackParameters(new PlaybackParameters(this.prefs.getSpeed()));
 
 		// Resume position
+		long start = 0;
 		if (prefs.getExtensionManager().isEnabled(Constant.REMEMBER_LAST_POSITION)) {
 			long resumePos = prefs.getResumePosition(videoId);
 			if (resumePos > SAFE_ZONE_MS && resumePos < duration - SAFE_ZONE_MS) {
 				this.player.seekTo(resumePos);
+				start = resumePos;
 			}
 		}
 
 		this.player.prepare();
-		this.player.setPlayWhenReady(!castSession.controls(videoId));
+		// Like YouTube: while connected, opening a video plays it on the TV instead.
+		if (casting()) castSession.cast(videoId, start);
+		this.player.setPlayWhenReady(!casting());
 	}
 
 	public void playFromControls() {
-        if (!castSession.setPlaying(videoId, true)) play();
+        if (!casting()) { play(); return; }
+        if (!castSession.setPlaying(castSession.videoId(), true)) castSession.cast(videoId, player.getCurrentPosition());
     }
     public void pauseFromControls() {
-        if (!castSession.setPlaying(videoId, false)) pause();
+        if (casting()) castSession.setPlaying(castSession.videoId(), false); else pause();
     }
     public void play() {
 		this.player.play();
@@ -496,10 +512,12 @@ public class Engine {
 	}
 
 	public void seekTo(long pos) {
+		if (castSession.seek(castSession.videoId(), pos)) return;
 		this.player.seekTo(Math.min(this.player.getDuration(), pos));
 	}
 
 	public void seekBy(long offset) {
+		if (castSession.seek(castSession.videoId(), castSession.position() + offset)) return;
 		this.player.seekTo(Math.min(this.player.getDuration(), this.player.getCurrentPosition() + offset));
 	}
 
@@ -557,7 +575,7 @@ public class Engine {
 	public String getCurrentVideoId() { return videoId; }
 
 	public long position() {
-		return this.player.getCurrentPosition();
+		return casting() && castSession.controls(videoId) ? castSession.position() : this.player.getCurrentPosition();
 	}
 
 	public void skipToNext() {
@@ -894,6 +912,7 @@ public class Engine {
 	}
 
 	public int getPlaybackState() {
+		if (casting() && !castSession.videoId().isEmpty()) return castSession.ended() ? Player.STATE_ENDED : Player.STATE_READY;
 		return this.player.getPlaybackState();
 	}
 

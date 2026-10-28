@@ -6,6 +6,7 @@ import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.*;
 import java.util.Date;
+import java.util.function.Consumer;
 import javax.net.ssl.*;
 import javax.security.auth.x500.X500Principal;
 import okhttp3.OkHttpClient;
@@ -39,21 +40,37 @@ public final class CastTls {
         SSLContext context = SSLContext.getInstance("TLS"); context.init(new KeyManager[]{key}, null, new SecureRandom());
         return new Identity(context, CastProtocol.hash(store.getCertificate(ALIAS).getEncoded()));
     }
-    public static OkHttpClient client(String suppliedPin) throws Exception {
+    public static OkHttpClient client(String suppliedPin) throws Exception { return client(suppliedPin, false); }
+    /** Pinned client. A long-poll client waits for the TV to report a playback change. */
+    public static OkHttpClient client(String suppliedPin, boolean longPoll) throws Exception {
         String pin = CastProtocol.normalizeCode(suppliedPin);
+        return build(chain -> {
+            String actual = CastProtocol.hash(chain[0].getEncoded());
+            if (!actual.startsWith(pin)) throw new CertificateException("TV code does not match; check the code shown on the TV");
+        }, longPoll);
+    }
+    /**
+     * First contact with a TV found on the local network. The certificate is recorded rather than
+     * checked; the TV owner must still approve the phone on screen before any credential is issued,
+     * and the recorded fingerprint is pinned from then on.
+     */
+    public static OkHttpClient firstContact(Consumer<String> fingerprint) throws Exception {
+        return build(chain -> fingerprint.accept(CastProtocol.hash(chain[0].getEncoded())), false);
+    }
+    private interface Check { void verify(X509Certificate[] chain) throws CertificateException; }
+    private static OkHttpClient build(Check check, boolean longPoll) throws Exception {
         X509TrustManager trust = new X509TrustManager() {
             public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
             public void checkClientTrusted(X509Certificate[] chain, String auth) throws CertificateException { throw new CertificateException(); }
             public void checkServerTrusted(X509Certificate[] chain, String auth) throws CertificateException {
                 if (chain == null || chain.length == 0) throw new CertificateException("Missing TV certificate");
-                String actual = CastProtocol.hash(chain[0].getEncoded());
-                if (!actual.startsWith(pin)) throw new CertificateException("TV code does not match; check the code shown on the TV");
+                check.verify(chain);
             }
         };
         SSLContext context = SSLContext.getInstance("TLS"); context.init(null, new TrustManager[]{trust}, new SecureRandom());
-        // Host identity is verified by the physically confirmed certificate pin, not a public DNS name.
+        // Host identity is verified by the certificate pin, not a public DNS name.
         return new OkHttpClient.Builder().sslSocketFactory(context.getSocketFactory(), trust).hostnameVerifier((host, session) -> true)
-                .followRedirects(false).followSslRedirects(false).connectTimeout(3, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS)
-                .callTimeout(8, TimeUnit.SECONDS).build();
+                .followRedirects(false).followSslRedirects(false).connectTimeout(3, TimeUnit.SECONDS)
+                .readTimeout(longPoll ? 20 : 5, TimeUnit.SECONDS).callTimeout(longPoll ? 25 : 8, TimeUnit.SECONDS).build();
     }
 }

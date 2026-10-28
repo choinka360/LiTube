@@ -1,6 +1,46 @@
-# LiTube v2.2.0 TV Preview
+# LiTube TV and casting
 
 One APK supports the existing phone app and a native Android TV launcher screen. The TV streams YouTube directly; the phone sends playback commands over the local network. This is LiTube-to-LiTube casting, not Google Cast or screen mirroring. Internet access is required on the TV for YouTube.
+
+## Casting, YouTube style (October 2026 redesign)
+
+1. Open **LiTube TV** on the TV once. Casting starts automatically.
+2. On the phone, play a video and tap the **Cast** icon in the player's top bar. TVs on the same Wi-Fi are listed, and remembered TVs are listed straight away.
+3. Tap the TV. The first time, the TV asks **Allow <phone> to cast?** and shows a 4-digit code. The phone shows the same code. Select **Allow**. No typing is needed.
+4. The video continues on the TV from the same position. The phone shows **Playing on <TV>**. The normal player controls control the TV: play/pause, the seek bar, double-tap/gesture seeking, and the media notification. The phone volume keys change the TV volume. A **Casting to <TV>** notification has Pause/Play and Stop casting.
+5. While connected, every video opened on the phone plays on the TV.
+6. Tap the Cast icon again for volume, play/pause and **Stop casting**. Stopping continues the video on the phone where the TV left off.
+
+The TV advertises a certificate-derived ID over DNS-SD. A remembered TV is therefore found again after its IP address changes. Up to 8 TVs are remembered. The first connection records the TV's certificate. Approval on the TV is required before any credential is issued, and the certificate is pinned from then on. If discovery is blocked (for example on guest or isolated networks), use **Connect with TV code** on the phone. Enter the address and 16-character code shown in **TV > Settings > Link with phone**.
+
+The phone follows the TV with long-polled `/status` requests (`since`/`version`), so changes made on the TV with its remote appear on the phone immediately. All earlier endpoints and response fields are unchanged; the Chrome extension keeps working. Its pairing no longer needs **Pair a phone** first, because the TV shows the Allow prompt by itself.
+
+## Android TV interface
+
+LiTube TV now looks and works like YouTube for Android TV:
+
+- **Navigation rail** on the left: Search, Home, Account and Settings. The rail expands while focused.
+- **Home** shows rows of thumbnail cards with a details header for the focused video. Rows: Continue watching, Recommended for you (related to your last video), Trending (if YouTube still offers it), Music, Because you watched…, Gaming, News, Live and Sports. Each row loads on its own; a row that fails is left out.
+- **Search** opens a results grid. You can also paste a YouTube link.
+- **Full-screen player:**
+  - OK pauses and shows the controls.
+  - Left/Right skip 10 seconds.
+  - Up/Down show the controls; Down goes to **Up next**.
+  - Back hides the controls, then leaves the player.
+  - Controls: play/pause, start over, next, captions, quality and speed. The seek bar scrubs with the D-pad.
+- **Autoplay** plays the first Up next video when one finishes. It can be turned off in Settings.
+- **Settings:**
+  - Link with phone (address and code)
+  - Autoplay
+  - Casting on/off
+  - Remove linked devices
+  - Open when a phone casts (Android 10+)
+  - Wake from standby
+  - About
+
+## Previous preview notes (v2.2.0)
+
+The notes below describe the earlier form-based phone screen and are kept for history.
 
 ## Install and use
 

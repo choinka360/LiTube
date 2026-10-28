@@ -63,4 +63,26 @@
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
+
+    <!-- Android TV: YouTube-for-TV dark look, always dark regardless of system setting. -->
+    <style name="Theme.LiTube.Tv" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/tv_background</item>
+        <item name="android:colorBackground">@color/tv_background</item>
+        <item name="colorPrimary">#FFFFFF</item>
+        <item name="colorOnPrimary">#0F0F0F</item>
+        <item name="colorSecondary">@color/yt_red</item>
+        <item name="android:statusBarColor">@color/tv_background</item>
+        <item name="android:navigationBarColor">@color/tv_background</item>
+    </style>
+
+    <style name="Widget.LiTube.Tv.RoundButton" parent="">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:background">@drawable/tv_round_button</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:focusable">true</item>
+        <item name="tint">@color/tv_on_focus_text</item>
+    </style>
 </resources>

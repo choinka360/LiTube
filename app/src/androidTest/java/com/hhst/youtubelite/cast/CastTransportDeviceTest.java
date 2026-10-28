@@ -22,6 +22,17 @@ public class CastTransportDeviceTest {
             try (CastClient client = new CastClient(device)) { assertThrows(javax.net.ssl.SSLException.class, () -> client.request("play", body)); }
         }
     }
+    @Test public void firstContactRecordsTheTvCertificateForPinning() throws Exception {
+        CastTls.Identity identity = CastTls.identity();
+        try (CastServer server = new CastServer(identity, 0, (path, auth, body) -> CastClient.body("state", "pending"))) {
+            CastClient.Device device = new CastClient.Device(); device.host = "127.0.0.1"; device.port = server.port();
+            try (CastClient client = CastClient.firstContact(device)) {
+                assertNull(client.seenFingerprint());
+                assertEquals("pending", client.request("pair", new JsonObject()).get("state").getAsString());
+                assertEquals(identity.fingerprint(), client.seenFingerprint());
+            }
+        }
+    }
     @Test public void refusesPublicEndpoints() {
         assertThrows(IllegalArgumentException.class, () -> CastClient.validateHost("8.8.8.8"));
     }

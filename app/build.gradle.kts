@@ -112,6 +112,7 @@ dependencies {
     implementation(libs.webkit)
     implementation(libs.viewpager2)
     implementation(libs.recyclerview)
+    implementation(libs.leanback)
     implementation(libs.hilt.android)
     annotationProcessor(libs.hilt.compiler)
     testImplementation(libs.junit)

@@ -6,6 +6,7 @@
     <string name="cancel">Cancel</string>
     <string name="download">Download</string>
     <string name="queue">Queue</string>
+    <string name="cast_to_tv">Cast to TV</string>
     <string name="add_to_queue">Add to queue</string>
     <string name="queue_item_added">Added to queue</string>
     <string name="queue_item_unavailable">Couldn\'t get current video info. Queue item was not added.</string>

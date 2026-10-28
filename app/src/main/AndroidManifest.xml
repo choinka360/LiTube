@@ -163,17 +163,22 @@
 
         <service android:name=".cast.TvReceiverService" android:exported="false"
             android:foregroundServiceType="connectedDevice|mediaPlayback" />
-        <activity android:name=".cast.TvAccountActivity" android:exported="false" android:screenOrientation="landscape" />
+        <receiver android:name=".cast.CastActionReceiver" android:exported="false" />
+        <activity android:name=".cast.TvAccountActivity" android:exported="false" android:screenOrientation="landscape"
+            android:theme="@style/Theme.LiTube.Tv" />
         <activity android:name=".cast.TvActivity" android:exported="true"
             android:label="LiTube TV" android:banner="@drawable/tv_banner"
+            android:theme="@style/Theme.LiTube.Tv"
             android:launchMode="singleTask" android:screenOrientation="landscape"
-            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode">
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".cast.CastActivity" android:exported="true" android:label="Cast with LiTube">
+        <activity android:name=".cast.CastActivity" android:exported="true" android:label="Cast with LiTube"
+            android:theme="@style/Theme.Transparent" android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

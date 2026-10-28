@@ -42,6 +42,13 @@ public final class CastProtocol {
         catch (Exception e) { throw new IllegalStateException(e); }
     }
     public static String hash(String value) { return hash(value.getBytes(StandardCharsets.UTF_8)); }
+    /** Short code shown on both screens during pairing, derived from the TV certificate and this request. */
+    public static String verificationCode(String fingerprint, String nonce) {
+        String digest = hash(fingerprint.toUpperCase(Locale.ROOT) + ":" + nonce);
+        return String.format(Locale.ROOT, "%04d", Long.parseLong(digest.substring(0, 8), 16) % 10000);
+    }
+    /** Advertised over DNS-SD so a remembered TV is recognised after its IP address changes. */
+    public static String deviceId(String fingerprint) { return fingerprint.substring(0, 16).toUpperCase(Locale.ROOT); }
     public static String normalizeCode(String code) {
         String normalized = code.replace(" ", "").replace("-", "").toUpperCase(Locale.ROOT);
         if (!normalized.matches("[A-F0-9]{16}|[A-F0-9]{64}")) throw new IllegalArgumentException("Enter the 16-character TV code");

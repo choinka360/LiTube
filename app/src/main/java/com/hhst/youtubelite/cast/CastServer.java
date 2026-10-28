@@ -10,7 +10,8 @@ public final class CastServer implements AutoCloseable {
     public interface Handler { JsonObject handle(String path, String token, JsonObject body) throws Exception; }
     private final SSLServerSocket server;
     private final ExecutorService acceptor = Executors.newSingleThreadExecutor();
-    private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(4));
+    // Status long-polls from connected phones each hold a worker while waiting for a change.
+    private final ThreadPoolExecutor workers = new ThreadPoolExecutor(6, 6, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(6));
     public CastServer(CastTls.Identity identity, int port, Handler handler) throws Exception {
         server = (SSLServerSocket) identity.context().getServerSocketFactory().createServerSocket();
         server.setReuseAddress(true); server.bind(new InetSocketAddress(port));

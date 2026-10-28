@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="56dp"
+    android:layout_marginVertical="4dp"
+    android:background="@drawable/tv_focus_pill"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp">
+
+    <ImageView
+        android:id="@+id/nav_icon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:duplicateParentState="true"
+        android:importantForAccessibility="no"
+        app:tint="@color/tv_nav_tint" />
+
+    <TextView
+        android:id="@+id/nav_label"
+        android:layout_width="150dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:duplicateParentState="true"
+        android:fontFamily="sans-serif-medium"
+        android:textColor="@color/tv_nav_tint"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</LinearLayout>

@@ -1,209 +1,427 @@
 package com.hhst.youtubelite.cast;
 
-import android.content.*;
-import android.graphics.Color;
+import android.content.Intent;
 import android.net.Uri;
-import android.os.*;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
-import android.view.*;
-import android.widget.*;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewParent;
+import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
-import androidx.media3.ui.PlayerView;
-import org.schabi.newpipe.extractor.ServiceList;
-import org.schabi.newpipe.extractor.stream.StreamInfoItem;
-import java.net.*;
+import androidx.leanback.widget.VerticalGridView;
+import androidx.recyclerview.widget.RecyclerView;
+import com.hhst.youtubelite.BuildConfig;
+import com.hhst.youtubelite.R;
+import com.hhst.youtubelite.extractor.YoutubeExtractor;
+import dagger.hilt.android.AndroidEntryPoint;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import javax.inject.Inject;
 
-/** Native, remote-first TV screen. The service owns playback across activity recreation. */
+/**
+ * LiTube for Android TV, laid out like YouTube on TV: a navigation rail, rows of videos and a
+ * full-screen player. The receiver service owns playback, so casting works across this screen's
+ * lifecycle.
+ */
+@AndroidEntryPoint
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
-public class TvActivity extends AppCompatActivity implements TvReceiverService.Screen {
+public class TvActivity extends AppCompatActivity implements TvReceiverService.Screen, TvPlayerUi.Host, TvCards.Listener {
+    private static final int SEARCH = 0, HOME = 1, ACCOUNT = 2, SETTINGS = 3;
+    // Initialises the YouTube extractor before browsing.
+    @Inject YoutubeExtractor extractor;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService searchWorker = Executors.newSingleThreadExecutor();
-    private final ExecutorService suggestionsWorker = Executors.newSingleThreadExecutor();
-    private Future<?> suggestionsTask;
-    private Button refreshSuggestions;
-    private PlayerView video;
-    private TextView status, pairing, suggestionsStatus, brand;
-    private LinearLayout suggestions;
-    private String suggestionsId;
-    private long suggestionsGeneration;
-    private LinearLayout results, panel, root;
-    private ScrollView controlsScroll;
-    private boolean fullscreen;
-    private android.app.AlertDialog pairingHelp;
+    private final ExecutorService feed = Executors.newFixedThreadPool(3);
     private TvReceiverService service;
-    private EditText query;
-    private long searchGeneration;
-    private boolean visible;
+    private TvPlayerUi playerUi;
+    private View browse, playerLayer, nav;
+    private final View[] navItems = new View[4];
+    private View[] pages;
+    private VerticalGridView homeRows, searchResults;
+    private TextView heroTitle, heroMeta, homeStatus, castChip, searchStatus;
+    private EditText searchBox;
+    private LinearLayout settingsList;
+    private int page = HOME, searchColumns = 3;
+    private boolean visible, playerOpen, navExpanded, homeFocused;
+    private View lastBrowseFocus;
+    private String pendingPlay, homeSeed;
+    private long feedGeneration, searchGeneration;
+    private final List<TvCards.Row> rows = new ArrayList<>();
+    private final List<Integer> rowSlots = new ArrayList<>();
+    private TvCards.RowAdapter rowAdapter;
+    private AlertDialog pairDialog;
     private final Runnable attach = new Runnable() {
         @Override public void run() {
             if (!visible) return;
-            if (TvReceiverService.instance != null) {
-                service = TvReceiverService.instance; service.attach(TvActivity.this); video.setPlayer(service.player());
-            } else main.postDelayed(this, 300);
+            if (TvReceiverService.instance == null) { main.postDelayed(this, 300); return; }
+            service = TvReceiverService.instance;
+            playerUi.attach(service.player());
+            service.attach(TvActivity.this);
+            if (pendingPlay != null) { String id = pendingPlay; pendingPlay = null; service.playLocal(id); openPlayer(); }
         }
     };
+
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         if (Build.VERSION.SDK_INT >= 27) setTurnScreenOn(true);
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(32, 24, 32, 24); root.setBackground(TvTheme.background()); root.setClipChildren(false);
-        brand = label("LiTube  /  TV", 27); brand.setTextColor(TvTheme.ACCENT); brand.setTypeface(android.graphics.Typeface.create("sans-serif-medium", 0)); root.addView(brand);
-        status = label("Your next great watch starts here", 16); TvTheme.text(status, true); root.addView(status);
-        video = new PlayerView(this); video.setUseController(true); video.setControllerAutoShow(true); video.setControllerShowTimeoutMs(5000); video.setFocusable(true);
-        root.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
-        ScrollView scroll = new ScrollView(this); controlsScroll = scroll; panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(10), dp(10), dp(10), dp(16)); panel.setClipChildren(false); scroll.setClipChildren(true); scroll.setClipToPadding(true); scroll.setBackground(TvTheme.card(scroll, false)); scroll.setClipToOutline(true); scroll.setElevation(dp(6)); scroll.addView(panel);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(250)));
-        pairing = label("Enable casting, then pair your phone", 14); TvTheme.text(pairing, true); panel.addView(pairing);
-        LinearLayout actions = new LinearLayout(this); panel.addView(actions);
-        button(actions, "Enable casting", () -> { ContextCompat.startForegroundService(this, new Intent(this, TvReceiverService.class)); main.post(attach); });
-        button(actions, "Pair a phone", () -> { if (service != null) { service.beginPairing(); pairingHelp = new android.app.AlertDialog.Builder(this).setTitle("Pair your phone")
-                .setMessage("On the phone choose Cast to TV, select this TV and enter:\n\n" + service.pairingCode() + "\n\nThen approve the phone here. Pairing stays open for two minutes.").setPositiveButton("OK", null).show(); } });
-        button(actions, "Full screen", this::fullscreen);
-        button(actions, "Settings", this::settings);
-        button(panel, "YouTube account / Sign in", () -> startActivity(new Intent(this, TvAccountActivity.class)));
-        query = new EditText(this); query.setSingleLine(true); query.setTextColor(Color.WHITE); query.setHintTextColor(Color.LTGRAY); query.setHint("Search YouTube or paste a video link"); query.setTextSize(18); query.setPadding(dp(14), dp(12), dp(14), dp(12)); query.setBackground(TvTheme.card(query, false)); panel.addView(query);
-        LinearLayout searchActions = new LinearLayout(this); panel.addView(searchActions);
-        button(searchActions, "Search", this::search);
-        button(searchActions, "Play link", () -> { try { requireService().playLocal(query.getText().toString()); video.requestFocus(); } catch (Exception e) { message(e.getMessage()); } });
-        results = new LinearLayout(this); results.setOrientation(LinearLayout.VERTICAL); panel.addView(results);
-        suggestionsStatus = label("Suggested videos — play or cast a clip first", 20); panel.addView(suggestionsStatus);
-        refreshSuggestions = button(panel, "Refresh suggested videos", () -> loadSuggestions(true));
-        suggestions = new LinearLayout(this); suggestions.setOrientation(LinearLayout.VERTICAL); panel.addView(suggestions);
-        setContentView(root);
-        if (saved != null && saved.getBoolean("fullscreen")) showCastFullscreen();
+        setContentView(R.layout.activity_tv);
+        browse = findViewById(R.id.tv_browse);
+        playerLayer = findViewById(R.id.tv_player_layer);
+        nav = findViewById(R.id.tv_nav);
+        pages = new View[]{findViewById(R.id.tv_page_search), findViewById(R.id.tv_page_home), null, findViewById(R.id.tv_page_settings)};
+        homeRows = findViewById(R.id.tv_home_rows);
+        searchResults = findViewById(R.id.tv_search_results);
+        heroTitle = findViewById(R.id.tv_hero_title);
+        heroMeta = findViewById(R.id.tv_hero_meta);
+        homeStatus = findViewById(R.id.tv_home_status);
+        castChip = findViewById(R.id.tv_cast_chip);
+        searchStatus = findViewById(R.id.tv_search_status);
+        searchBox = findViewById(R.id.tv_search_box);
+        settingsList = findViewById(R.id.tv_settings_list);
+        playerUi = new TvPlayerUi(this, this);
+        setupNav();
+        TvCards.alignStart(homeRows);
+        rowAdapter = new TvCards.RowAdapter(rows, this);
+        homeRows.setAdapter(rowAdapter);
+        float widthDp = getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density;
+        searchColumns = Math.max(2, (int) ((widthDp - 104 - 48) / 244));
+        searchResults.setNumColumns(searchColumns);
+        searchResults.setVerticalSpacing(Math.round(28 * getResources().getDisplayMetrics().density));
+        searchBox.setOnEditorActionListener((v, action, event) -> {
+            if (action == EditorInfo.IME_ACTION_SEARCH || action == EditorInfo.IME_ACTION_DONE || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) { search(); return true; }
+            return false;
+        });
+        playerLayer.setFocusable(true);
+        showPage(HOME);
+        // Without this the first focusable item, Search, would take focus and switch pages.
+        navItems[HOME].requestFocus();
+        loadHome(true);
         ContextCompat.startForegroundService(this, new Intent(this, TvReceiverService.class));
+        if (saved != null && saved.getBoolean("player")) openPlayer();
     }
-    @Override public void showCastFullscreen() {
-        if (pairingHelp != null) { pairingHelp.dismiss(); pairingHelp = null; }
-        fullscreen();
-        video.setControllerAutoShow(false);
-        video.hideController();
+
+    @Override protected void onSaveInstanceState(Bundle out) { out.putBoolean("player", playerOpen); super.onSaveInstanceState(out); }
+    @Override protected void onStart() { super.onStart(); visible = true; main.post(attach); }
+    @Override protected void onResume() {
+        super.onResume();
+        // Recently watched videos change while the player is used.
+        List<TvVideo> history = TvReceiverService.history(this);
+        String seed = history.isEmpty() ? null : history.get(0).id();
+        if (!playerOpen && !Objects.equals(seed, homeSeed)) loadHome(false);
     }
-    @Override protected void onSaveInstanceState(Bundle out) {
-        out.putBoolean("fullscreen", fullscreen);
-        super.onSaveInstanceState(out);
+    @Override protected void onStop() {
+        visible = false; main.removeCallbacks(attach);
+        if (service != null) service.detach(this);
+        playerUi.detach();
+        super.onStop();
     }
-    private void fullscreen() {
-        fullscreen = true; controlsScroll.setVisibility(android.view.View.GONE); status.setVisibility(android.view.View.GONE); brand.setVisibility(View.GONE);
-        root.setPadding(0, 0, 0, 0); video.requestFocus(); video.showController();
+    @Override protected void onDestroy() { feedGeneration++; searchGeneration++; feed.shutdownNow(); super.onDestroy(); }
+
+    // ---- Navigation rail ----
+
+    private void setupNav() {
+        int[] ids = {R.id.nav_search, R.id.nav_home, R.id.nav_account, R.id.nav_settings};
+        int[] icons = {R.drawable.ic_tv_search, R.drawable.ic_tv_home, R.drawable.ic_tv_account, R.drawable.ic_tv_settings};
+        String[] labels = {"Search", "Home", "Account", "Settings"};
+        for (int i = 0; i < ids.length; i++) {
+            View item = findViewById(ids[i]);
+            navItems[i] = item;
+            ((ImageView) item.findViewById(R.id.nav_icon)).setImageResource(icons[i]);
+            ((TextView) item.findViewById(R.id.nav_label)).setText(labels[i]);
+            item.setContentDescription(labels[i]);
+            int index = i;
+            item.setOnFocusChangeListener((v, focused) -> {
+                if (focused && index != ACCOUNT) showPage(index);
+                main.post(this::updateNav);
+            });
+            item.setOnClickListener(v -> {
+                if (index == ACCOUNT) startActivity(new Intent(this, TvAccountActivity.class));
+                else focusPage();
+            });
+        }
     }
-    @Override public void onBackPressed() {
-        if (fullscreen) { fullscreen = false; video.setControllerAutoShow(true); controlsScroll.setVisibility(android.view.View.VISIBLE); status.setVisibility(android.view.View.VISIBLE); brand.setVisibility(View.VISIBLE); root.setPadding(32, 24, 32, 24); query.requestFocus(); loadSuggestions(); }
-        else super.onBackPressed();
+    /** The rail shows labels while it has focus, like YouTube on TV. */
+    private void updateNav() {
+        boolean expand = nav.hasFocus();
+        if (expand == navExpanded) return;
+        navExpanded = expand;
+        for (View item : navItems) item.findViewById(R.id.nav_label).setVisibility(expand ? View.VISIBLE : View.GONE);
+        nav.setBackgroundResource(expand ? R.drawable.tv_nav_expanded_bg : 0);
     }
-    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density); }
-    private TextView label(String text, int size) { TextView view = new TextView(this); view.setText(text); view.setTextSize(size); TvTheme.text(view, false); view.setPadding(4, 6, 4, 6); return view; }
-    private Button button(LinearLayout row, String text, Runnable action) {
-        Button button = new Button(this); button.setText(text); button.setTextColor(Color.WHITE); button.setFocusable(true); button.setFocusableInTouchMode(true); button.setAllCaps(false);
-        TvTheme.button(button);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(48)); params.setMargins(dp(4), dp(5), dp(4), dp(5)); row.addView(button, params); button.setOnClickListener(v -> action.run()); return button;
+    private void showPage(int index) {
+        if (index == ACCOUNT) return;
+        page = index;
+        for (int i = 0; i < pages.length; i++) if (pages[i] != null) pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < navItems.length; i++) navItems[i].setSelected(i == index);
+        if (index == SETTINGS) renderSettings();
+        // The search box spans the top of its page, where the badge would sit.
+        castChip.setVisibility(index == SEARCH ? View.GONE : View.VISIBLE);
     }
-    private TvReceiverService requireService() { if (service == null || TvReceiverService.instance == null) throw new IllegalStateException("Enable casting first"); return service; }
-    private void message(String value) { status.setText(value == null ? "Could not complete this action" : value); }
-    private void search() {
-        String term = query.getText().toString().trim(); if (term.isEmpty()) return;
-        long request = ++searchGeneration; results.removeAllViews(); message("Searching…");
-        searchWorker.execute(() -> {
-            try {
-                var extractor = ServiceList.YouTube.getSearchExtractor(term); extractor.fetchPage();
-                var found = extractor.getInitialPage().getItems();
-                runOnUiThread(() -> { if (isDestroyed() || request != searchGeneration) return; message("Search results"); int count = 0;
-                    for (var item : found) if (item instanceof StreamInfoItem stream && count++ < 20) button(results, stream.getName(), () -> { try { requireService().playLocal(stream.getUrl()); fullscreen(); } catch (Exception e) { message(e.getMessage()); } });
-                    if (count == 0) message("No videos found");
+    private void focusPage() {
+        if (page == HOME && rows.isEmpty()) return;
+        View target = page == SEARCH ? (searchResults.getAdapter() != null && searchResults.getAdapter().getItemCount() > 0 ? searchResults : searchBox)
+                : page == HOME ? homeRows : settingsList.getChildCount() > 1 ? settingsList.getChildAt(1) : null;
+        if (target != null) target.requestFocus();
+    }
+    private void focusNav() { navItems[page].requestFocus(); }
+
+    // ---- Home ----
+
+    private record Slot(String title, Loader loader) {}
+    private interface Loader { List<TvVideo> load() throws Exception; }
+
+    /** Builds the rows, each loaded independently and shown in a fixed order as it arrives. */
+    private void loadHome(boolean first) {
+        long request = ++feedGeneration;
+        List<TvVideo> history = TvReceiverService.history(this);
+        homeSeed = history.isEmpty() ? null : history.get(0).id();
+        boolean hadFocus = homeRows.hasFocus();
+        rows.clear(); rowSlots.clear(); rowAdapter.notifyDataSetChanged();
+        homeStatus.setVisibility(View.VISIBLE); homeStatus.setText("Loading videos…");
+        homeFocused = !first && !hadFocus;
+        List<Slot> slots = new ArrayList<>();
+        if (!history.isEmpty()) {
+            List<TvVideo> recent = new ArrayList<>(history.subList(0, Math.min(history.size(), 20)));
+            slots.add(new Slot("Continue watching", () -> recent));
+            TvVideo last = history.get(0);
+            slots.add(new Slot("Recommended for you", () -> TvSuggestions.related(last.id())));
+        }
+        slots.add(new Slot("Trending", TvSuggestions::trending));
+        slots.add(new Slot("Music", () -> TvSuggestions.search("music")));
+        if (history.size() > 1) { TvVideo earlier = history.get(1); slots.add(new Slot("Because you watched " + earlier.title(), () -> TvSuggestions.related(earlier.id()))); }
+        slots.add(new Slot("Gaming", () -> TvSuggestions.search("gaming")));
+        slots.add(new Slot("News", () -> TvSuggestions.search("news today")));
+        slots.add(new Slot("Live", () -> TvSuggestions.search("live")));
+        slots.add(new Slot("Sports", () -> TvSuggestions.search("sports highlights")));
+        int[] pending = {slots.size()};
+        for (int i = 0; i < slots.size(); i++) {
+            int slot = i; Slot source = slots.get(i);
+            feed.execute(() -> {
+                List<TvVideo> items;
+                try { items = source.loader().load(); } catch (Exception e) { items = List.of(); }
+                List<TvVideo> loaded = items;
+                main.post(() -> {
+                    if (isDestroyed() || request != feedGeneration) return;
+                    pending[0]--;
+                    if (!loaded.isEmpty()) addRow(slot, new TvCards.Row(source.title(), loaded));
+                    if (!rows.isEmpty()) homeStatus.setVisibility(View.GONE);
+                    else if (pending[0] == 0) homeStatus.setText("Couldn't load videos. Check the TV's internet connection, then open Home again.");
                 });
-            } catch (Exception e) { runOnUiThread(() -> { if (!isDestroyed() && request == searchGeneration) message("Search failed. Try again or cast a link from your phone."); }); }
+            });
+        }
+    }
+    private void addRow(int slot, TvCards.Row row) {
+        int position = 0;
+        while (position < rowSlots.size() && rowSlots.get(position) < slot) position++;
+        rowSlots.add(position, slot); rows.add(position, row);
+        rowAdapter.notifyItemInserted(position);
+        if (rows.size() == 1 && heroTitle.getText().length() == 0) focused(row.items().get(0));
+        // Start in the content, as YouTube does, unless the viewer is already elsewhere.
+        if (!homeFocused && !playerOpen && page == HOME) {
+            View current = getCurrentFocus();
+            if (current == null || current.getParent() == nav || nav.hasFocus()) {
+                homeFocused = true;
+                homeRows.post(() -> { if (!playerOpen && page == HOME) homeRows.requestFocus(); });
+            }
+        }
+    }
+
+    @Override public void open(TvVideo video) { play(video); }
+    @Override public void focused(TvVideo video) {
+        heroTitle.setText(video.title());
+        heroMeta.setText(video.meta().isEmpty() ? video.channel() : video.channel() + "  •  " + video.meta());
+    }
+
+    // ---- Search ----
+
+    private void search() {
+        String term = searchBox.getText().toString().trim();
+        if (term.isEmpty()) return;
+        InputMethodManager input = getSystemService(InputMethodManager.class);
+        if (input != null) input.hideSoftInputFromWindow(searchBox.getWindowToken(), 0);
+        try { String id = CastProtocol.videoId(term); play(TvVideo.of(id, "", "", 0)); return; } catch (IllegalArgumentException ignored) { }
+        long request = ++searchGeneration;
+        searchStatus.setText("Searching for “" + term + "”…");
+        searchResults.setAdapter(null);
+        feed.execute(() -> {
+            List<TvVideo> found; String failure = null;
+            try { found = TvSuggestions.search(term); } catch (Exception e) { found = List.of(); failure = "Search failed. Check the TV's internet connection and try again."; }
+            List<TvVideo> items = found; String error = failure;
+            main.post(() -> {
+                if (isDestroyed() || request != searchGeneration) return;
+                if (error != null) { searchStatus.setText(error); return; }
+                searchStatus.setText(items.isEmpty() ? "No results for “" + term + "”" : "Results for “" + term + "”");
+                searchResults.setAdapter(new TvCards.CardAdapter(items, this));
+                if (!items.isEmpty() && page == SEARCH && !playerOpen) searchResults.post(searchResults::requestFocus);
+            });
         });
     }
-    private void settings() {
-        String[] options = {"Wake setup for Sony TV", "Allow opening over other apps (Android 10+)", "Forget all paired phones", "Disable casting"};
-        new android.app.AlertDialog.Builder(this).setTitle("TV settings").setItems(options, (d, which) -> {
-            if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Wake from standby").setMessage("On your Sony KD-55XF9005 enable Remote Start in the TV network settings. Leave LiTube casting enabled. For deeper standby, enter the TV's network MAC address in the phone's casting screen. Network wake depends on the TV keeping its network adapter active; it cannot start an unplugged TV.").setPositiveButton("OK", null).show();
-            if (which == 1) { try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); } catch (Exception e) { message("This TV does not expose that permission. Keep LiTube open for casting."); } }
-            if (which == 2 && service != null) new android.app.AlertDialog.Builder(this).setMessage("Revoke every phone's casting access?").setPositiveButton("Forget phones", (a, b) -> service.forgetPhones()).setNegativeButton("Cancel", null).show();
-            if (which == 3) { video.setPlayer(null); stopService(new Intent(this, TvReceiverService.class)); service = null; message("Casting disabled"); }
-        }).show();
+
+    // ---- Settings ----
+
+    private void renderSettings() {
+        View focused = settingsList.getFocusedChild();
+        int focusIndex = focused == null ? -1 : settingsList.indexOfChild(focused);
+        while (settingsList.getChildCount() > 1) settingsList.removeViewAt(1);
+        boolean on = service != null && TvReceiverService.instance != null;
+        setting(R.drawable.ic_cast, "Link with phone", "On your phone, open LiTube, play a video and tap the Cast button", this::showLinkInfo);
+        setting(R.drawable.ic_next, "Autoplay", TvReceiverService.autoplay(this) ? "On — the next suggested video plays automatically" : "Off", () -> {
+            TvReceiverService.setAutoplay(this, !TvReceiverService.autoplay(this)); renderSettings();
+        });
+        setting(R.drawable.ic_cast_connected, "Casting", on ? "On — phones on this Wi-Fi can cast to this TV" : "Off — select to turn on", () -> {
+            if (on) {
+                playerUi.detach(); stopService(new Intent(this, TvReceiverService.class)); service = null; changed(); renderSettings();
+            } else {
+                ContextCompat.startForegroundService(this, new Intent(this, TvReceiverService.class)); main.post(attach); main.postDelayed(this::renderSettings, 800);
+            }
+        });
+        setting(R.drawable.ic_close, "Remove linked devices", "Phones and computers will need approval again", () ->
+                new AlertDialog.Builder(this).setTitle("Remove linked devices?").setMessage("Every phone and computer will need to be allowed on this TV again before it can cast.")
+                        .setPositiveButton("Remove", (d, w) -> { if (service != null) service.forgetPhones(); }).setNegativeButton("Cancel", null).show());
+        if (Build.VERSION.SDK_INT >= 29) setting(R.drawable.ic_tv, "Open when a phone casts", Settings.canDrawOverlays(this) ? "Allowed" : "Allow LiTube to open over other apps", () -> {
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
+            catch (Exception e) { info("Not available", "This TV doesn't offer that permission. Keep LiTube open to receive videos."); }
+        });
+        setting(R.drawable.ic_info, "Wake from standby", "Let a phone turn this TV on", () -> info("Wake from standby",
+                "Keep casting turned on. On Sony TVs, turn on Remote Start in Settings > Network. A phone can then wake the TV when it casts, as long as the TV keeps its network on in standby. A TV that is unplugged can't be woken."));
+        setting(R.drawable.ic_info, "About", "LiTube " + BuildConfig.VERSION_NAME, () -> info("LiTube", "Version " + BuildConfig.VERSION_NAME + "\nTV name: " + TvReceiverService.tvName(this)));
+        if (focusIndex > 0 && focusIndex < settingsList.getChildCount()) settingsList.getChildAt(focusIndex).requestFocus();
     }
-    @Override protected void onStart() { super.onStart(); visible = true; main.post(attach); }
-    @Override protected void onStop() { visible = false; main.removeCallbacks(attach); if (service != null) service.detach(this); video.setPlayer(null); super.onStop(); }
-    @Override protected void onDestroy() { searchGeneration++; suggestionsGeneration++; searchWorker.shutdownNow(); suggestionsWorker.shutdownNow(); super.onDestroy(); }
-    @Override public void changed() {
-        if (!visible || service == null) return;
-        message(service.description());
-        if (!fullscreen) loadSuggestions();
-        pairing.setText("TV address: " + addresses() + ":" + service.port() + "   •   Pairing code: " + service.pairingCode());
-        if (service.player().isPlaying()) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    private void setting(int icon, String title, String summary, Runnable action) {
+        View item = LayoutInflater.from(this).inflate(R.layout.tv_setting_item, settingsList, false);
+        ((ImageView) item.findViewById(R.id.tv_setting_icon)).setImageResource(icon);
+        ((TextView) item.findViewById(R.id.tv_setting_title)).setText(title);
+        ((TextView) item.findViewById(R.id.tv_setting_summary)).setText(summary);
+        item.setOnClickListener(v -> action.run());
+        settingsList.addView(item);
     }
-    private void loadSuggestions() { loadSuggestions(false); }
-    private void loadSuggestions(boolean manual) {
-        if (suggestions == null) return;
-        String id = service == null ? null : service.currentVideoId();
-        if (id == null) {
-            try { id = CastProtocol.videoId(query.getText().toString().trim()); }
-            catch (IllegalArgumentException ignored) { }
-        }
-        if (id == null) id = getSharedPreferences("litube_tv_suggestions", MODE_PRIVATE).getString("last_video", null);
-        if (id == null) {
-            suggestionsGeneration++;
-            if (suggestionsTask != null) suggestionsTask.cancel(true);
-            suggestionsId = null; suggestions.removeAllViews(); refreshSuggestions.setEnabled(true);
-            suggestionsStatus.setText("Play or cast a video, or enter a YouTube link, then select Refresh.");
-            if (manual) new android.app.AlertDialog.Builder(this).setTitle("Choose a video first")
-                .setMessage("Suggestions are based on a video. Play or cast a clip, or paste a YouTube link in the search box, then select Refresh.").setPositiveButton("OK", (d, w) -> query.requestFocus()).show();
+    private void showLinkInfo() {
+        String address = service == null ? "Casting is off" : addresses() + ":" + service.port();
+        String code = service == null ? "—" : service.pairingCode();
+        info("Link with phone", "1. Connect your phone to the same Wi-Fi as this TV.\n2. In LiTube on your phone, play a video and tap the Cast button.\n3. Pick “" + TvReceiverService.tvName(this) + "”, then select Allow here.\n\n"
+                + "If your TV isn't listed, choose Connect with TV code on the phone and enter:\n\nTV address: " + address + "\nTV code: " + code);
+    }
+    private void info(String title, String message) { new AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show(); }
+
+    // ---- Player ----
+
+    @Override public TvReceiverService service() { return service; }
+    @Override public void play(TvVideo video) {
+        if (service == null || TvReceiverService.instance == null) {
+            pendingPlay = video.id();
+            ContextCompat.startForegroundService(this, new Intent(this, TvReceiverService.class));
+            main.post(attach);
             return;
         }
-        if (!manual && id.equals(suggestionsId)) return;
-        suggestionsId = id; long request = ++suggestionsGeneration;
-        if (suggestionsTask != null) suggestionsTask.cancel(true);
-        suggestions.removeAllViews(); suggestionsStatus.setText("Loading YouTube suggestions\u2026");
-        refreshSuggestions.setEnabled(false);
-        final String sourceId = id;
-        suggestionsTask = suggestionsWorker.submit(() -> {
-            try {
-                var items = TvSuggestions.load(sourceId);
-                main.post(() -> {
-                    if (isDestroyed() || request != suggestionsGeneration) return;
-                    refreshSuggestions.setEnabled(true);
-                    suggestionsStatus.setText(items.isEmpty() ? "No suggestions returned for this video. Try another clip." : "Suggested by YouTube | " + items.size() + " videos");
-                    for (var item : items) { Button tile = button(suggestions, item.getName() + "\n" + item.getUploaderName(), () -> {
-                        try { requireService().playLocal(item.getUrl()); showCastFullscreen(); }
-                        catch (Exception e) { message(e.getMessage()); }
-                    });
-                        tile.setGravity(Gravity.START | Gravity.CENTER_VERTICAL); tile.setMaxLines(3); tile.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                        tile.getLayoutParams().width = ViewGroup.LayoutParams.MATCH_PARENT; tile.getLayoutParams().height = dp(86);
-                    }
-                    if (manual && !fullscreen && visible) {
-                        suggestions.post(() -> {
-                            if (isDestroyed() || request != suggestionsGeneration || fullscreen || !visible) return;
-                            View target = suggestions.getChildCount() > 0 ? suggestions.getChildAt(0) : refreshSuggestions;
-                            target.requestFocus();
-                            target.requestRectangleOnScreen(new android.graphics.Rect(0, 0, target.getWidth(), target.getHeight()), true);
-                        });
-                    }
-                });
-            } catch (Exception e) { main.post(() -> {
-                if (!isDestroyed() && request == suggestionsGeneration) {
-                    refreshSuggestions.setEnabled(true);
-                    suggestionsStatus.setText("Suggestions unavailable. Check the internet connection and select Refresh to retry.");
-                    if (manual && visible && !fullscreen) new android.app.AlertDialog.Builder(this).setTitle("Could not refresh suggestions")
-                        .setMessage("Check the TV's internet connection, then select Refresh to retry.").setPositiveButton("OK", null).show();
-                }
-            }); }
-        });
+        service.playLocal(video.id());
+        openPlayer();
     }
-    private String addresses() {
-        try { for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) for (InetAddress ip : Collections.list(nic.getInetAddresses())) if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip.getHostAddress(); } catch (Exception ignored) {} return "No local network";
+    private void openPlayer() {
+        if (!playerOpen) lastBrowseFocus = getCurrentFocus();
+        playerOpen = true;
+        playerLayer.setVisibility(View.VISIBLE);
+        browse.setVisibility(View.GONE);
+        playerUi.hideOverlay();
+        playerLayer.requestFocus();
+        playerUi.update();
     }
-    @Override public void confirmPair(String name, Runnable approve, Runnable deny) {
-        if (pairingHelp != null) { pairingHelp.dismiss(); pairingHelp = null; }
-        new android.app.AlertDialog.Builder(this).setTitle("Allow this phone?").setMessage(name + " wants to control LiTube playback on this TV.")
-                .setPositiveButton("Allow", (d, w) -> approve.run()).setNegativeButton("Deny", (d, w) -> deny.run()).setOnCancelListener(d -> deny.run()).show();
+    private void closePlayer() {
+        playerOpen = false;
+        if (service != null) service.player().pause();
+        playerUi.hideOverlay();
+        playerLayer.setVisibility(View.GONE);
+        browse.setVisibility(View.VISIBLE);
+        if (lastBrowseFocus != null && lastBrowseFocus.isAttachedToWindow()) lastBrowseFocus.requestFocus(); else focusPage();
+        List<TvVideo> history = TvReceiverService.history(this);
+        String seed = history.isEmpty() ? null : history.get(0).id();
+        if (!Objects.equals(seed, homeSeed) && page == HOME) loadHome(false);
     }
+
+    // ---- Receiver callbacks ----
+
+    @Override public void showCastFullscreen() {
+        if (pairDialog != null) { pairDialog.dismiss(); pairDialog = null; }
+        openPlayer();
+        playerUi.showOverlay();
+    }
+    @Override public void changed() {
+        if (!visible) return;
+        boolean on = service != null && TvReceiverService.instance != null;
+        castChip.setText(!on ? "Casting is off" : service.ready() ? "Ready to cast  •  " + service.tvName() : "Starting…");
+        // The phone stopped casting: leave the empty player, as YouTube does.
+        if (playerOpen && on && service.currentVideoId() == null) closePlayer();
+        if (playerOpen) playerUi.update();
+        boolean playing = on && service.player().isPlaying();
+        if (playing) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+    @Override public void confirmPair(String name, String code, Runnable approve, Runnable deny) {
+        if (pairDialog != null) pairDialog.dismiss();
+        boolean[] answered = {false};
+        pairDialog = new AlertDialog.Builder(this).setTitle("Allow " + name + " to cast?")
+                .setMessage(name + " wants to play videos on this TV.\n\nCode: " + code + "\n\nCheck that your device shows the same code.")
+                .setPositiveButton("Allow", (d, w) -> { answered[0] = true; approve.run(); })
+                .setNegativeButton("Don't allow", (d, w) -> { answered[0] = true; deny.run(); })
+                .setOnDismissListener(d -> { if (!answered[0]) deny.run(); pairDialog = null; })
+                .show();
+    }
+
+    // ---- Remote keys ----
+
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (video.hasFocus() && video.dispatchMediaKeyEvent(event)) return true;
+        if (playerOpen) {
+            if (playerUi.dispatch(event)) return true;
+            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) { if (event.getAction() == KeyEvent.ACTION_UP) closePlayer(); return true; }
+            return super.dispatchKeyEvent(event);
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            View current = getCurrentFocus();
+            boolean inNav = nav.hasFocus();
+            switch (event.getKeyCode()) {
+                case KeyEvent.KEYCODE_DPAD_LEFT -> { if (!inNav && current != null && atLeftEdge(current)) { focusNav(); return true; } }
+                case KeyEvent.KEYCODE_DPAD_RIGHT -> { if (inNav) { focusPage(); return true; } }
+                case KeyEvent.KEYCODE_SEARCH -> { showPage(SEARCH); searchBox.requestFocus(); return true; }
+                default -> { }
+            }
+        }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && !nav.hasFocus()) {
+            if (event.getAction() == KeyEvent.ACTION_UP) focusNav();
+            return true;
+        }
         return super.dispatchKeyEvent(event);
     }
+    /** True when moving left would leave the page content for the navigation rail. */
+    private boolean atLeftEdge(View focused) {
+        if (focused == searchBox) return searchBox.getSelectionStart() == 0;
+        View child = focused; ViewParent parent = focused.getParent();
+        while (parent instanceof View && !(parent instanceof RecyclerView)) { child = (View) parent; parent = parent.getParent(); }
+        if (!(parent instanceof RecyclerView grid)) return true;
+        int position = grid.getChildAdapterPosition(child);
+        if (grid == searchResults) return position % searchColumns == 0;
+        return position <= 0;
+    }
+
+    private static String addresses() {
+        try {
+            for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces()))
+                for (InetAddress ip : Collections.list(nic.getInetAddresses()))
+                    if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip.getHostAddress();
+        } catch (Exception ignored) { }
+        return "No local network";
+    }
 }
-
-
