@@ -15,6 +15,38 @@ The TV advertises a certificate-derived ID over DNS-SD. A remembered TV is there
 
 The phone follows the TV with long-polled `/status` requests (`since`/`version`), so changes made on the TV with its remote appear on the phone immediately. All earlier endpoints and response fields are unchanged; the Chrome extension keeps working. Its pairing no longer needs **Pair a phone** first, because the TV shows the Allow prompt by itself.
 
+## Waking the TV and casting from outside the home network
+
+This uses the same approach as the RemoteWakeUp app: signed UDP commands to `pcstation.hopto.org`, which the router forwards to the TV.
+
+- **Waking.** Every time the phone connects to the TV, at home or from outside, it sends the RemoteWakeUp TV helper's signed `TVWAKE`. It goes to the router's UDP 10 (forwarded to the helper on port 9009) and to the TV's home address. The helper must be installed on the TV, as set up by RemoteWakeUp.
+- **Casting from outside.** If the phone isn't on Wi-Fi or Ethernet, or the TV doesn't answer on the home network, LiTube sends the clip as a signed UDP command. It goes to the router's UDP 11 and to the TV's home address, and the TV's LiTube listener on UDP 9010 receives it. The TV wakes and plays the clip.
+- **Controls from outside.** Play, pause, seek, stop and volume work, and the phone checks the TV's state every 3 seconds. The phone shows "via the internet". The cast sheet labels a remembered TV that isn't on the current network: tap it to wake it and play.
+- **Format.** Commands use the TV helper's format: `NAME:<unix ms>[:args]:<HMAC-SHA256>`.
+  - They are refused if more than 2 minutes old, once the TV's clock is set, and replays are refused.
+  - The TV doesn't reply to anything unsigned.
+  - Only playback commands are accepted, never pairing.
+- **TV boot.** LiTube's receiver now starts when the TV boots, so casting works without opening LiTube on the TV. Run `adb shell dumpsys deviceidle whitelist +com.hhst.litube` once after installing, as for the helper, so Android doesn't stop it in standby.
+
+### Setup
+
+1. **Router** (Orange Funbox, port forwarding / NAT page): add **UDP**, external port **11**, internal port **9010**, destination **192.168.1.49**. The helper's existing UDP 10 → 9009 rule stays as it is.
+2. **Keys.** In the git-ignored root `local.properties`:
+   - `litube.tvHelper.secret` is the RemoteWakeUp TV helper's key, from `tv-agent\secret.txt`.
+   - `litube.remote.secret` is a 32-hex-character key of your choice. The phone and the TV must have the same build.
+   - Optional: `litube.remote.host` (default none: casting from outside is off), `litube.remote.port` (default 11) and `litube.tvHelper.port` (default 10).
+   - Builds without these keys, such as the GitHub Actions build, simply leave casting from outside off.
+3. Install the same APK on the phone and the TV.
+
+**Keep the APK private.** It contains both keys, so anyone with it can wake the TV and cast to it, the same caveat as the RemoteWakeUp app.
+
+## TV restarts when switching to an HDMI input (fixed November 2026)
+
+The Sony KD-55XF9005 froze and restarted when switching from LiTube to HDMI 3/ARC.
+- **What the logs showed:** on 9 and 10 November, the system log stopped while LiTube's player was still releasing the TV chip's hardware video decoder (MediaTek `MtkOmxVdec`) as the TV started the HDMI input. Each time, the watchdog restarted the TV.
+- **The fix:** LiTube now frees the decoder as soon as it leaves the screen. Pressing Input pauses it about two seconds before the switch. The video and position are kept, and the video is shown again, paused, when LiTube returns.
+- **Verification:** three switches from playing LiTube to HDMI 3/ARC, with no restart.
+
 ## Android TV interface
 
 LiTube TV now looks and works like YouTube for Android TV:

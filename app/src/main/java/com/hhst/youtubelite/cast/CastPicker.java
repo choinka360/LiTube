@@ -134,7 +134,8 @@ public final class CastPicker {
                 }
                 ((TextView) entry.row.findViewById(R.id.device_name)).setText(entry.name);
                 boolean busyHere = entry.name.equals(session.connecting());
-                String detail = busyHere ? "Connecting…" : entry.found ? (entry.saved != null && entry.saved.paired() ? "Ready" : "Available on your Wi-Fi") : "Not found on this network yet";
+                String away = entry.saved != null && entry.saved.paired() && RemoteLink.configured() ? "Away from home: tap to wake it and play" : "Not found on this network yet";
+                String detail = busyHere ? (session.progress().isEmpty() ? "Connecting…" : session.progress()) : entry.found ? (entry.saved != null && entry.saved.paired() ? "Ready" : "Available on your Wi-Fi") : away;
                 ((TextView) entry.row.findViewById(R.id.device_detail)).setText(detail);
                 entry.row.findViewById(R.id.device_progress).setVisibility(busyHere ? View.VISIBLE : View.GONE);
                 entry.row.setAlpha(entry.found || entry.saved != null ? 1f : 0.6f);

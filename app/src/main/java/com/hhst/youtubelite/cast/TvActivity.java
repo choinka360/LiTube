@@ -58,7 +58,7 @@ public class TvActivity extends AppCompatActivity implements TvReceiverService.S
     private EditText searchBox;
     private LinearLayout settingsList;
     private int page = HOME, searchColumns = 3;
-    private boolean visible, playerOpen, navExpanded, homeFocused;
+    private boolean visible, resumed, playerOpen, navExpanded, homeFocused;
     private View lastBrowseFocus;
     private String pendingPlay, homeSeed;
     private long feedGeneration, searchGeneration;
@@ -73,6 +73,7 @@ public class TvActivity extends AppCompatActivity implements TvReceiverService.S
             service = TvReceiverService.instance;
             playerUi.attach(service.player());
             service.attach(TvActivity.this);
+            service.setOnScreen(resumed);
             if (pendingPlay != null) { String id = pendingPlay; pendingPlay = null; service.playLocal(id); openPlayer(); }
         }
     };
@@ -118,8 +119,17 @@ public class TvActivity extends AppCompatActivity implements TvReceiverService.S
 
     @Override protected void onSaveInstanceState(Bundle out) { out.putBoolean("player", playerOpen); super.onSaveInstanceState(out); }
     @Override protected void onStart() { super.onStart(); visible = true; main.post(attach); }
+    @Override protected void onPause() {
+        // The Input menu pauses LiTube about two seconds before the TV switches to HDMI; the
+        // video decoder must be free by then (see TvReceiverService.setOnScreen).
+        resumed = false;
+        if (service != null) service.setOnScreen(false);
+        super.onPause();
+    }
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
+        if (service != null) service.setOnScreen(true);
         // Recently watched videos change while the player is used.
         List<TvVideo> history = TvReceiverService.history(this);
         String seed = history.isEmpty() ? null : history.get(0).id();

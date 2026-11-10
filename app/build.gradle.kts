@@ -10,6 +10,7 @@ val tvOAuthProperties = Properties().apply {
     if (config.exists()) config.inputStream().use { load(it) }
 }
 fun tvOAuthValue(name: String): String = "\"" + tvOAuthProperties.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+fun tvPortValue(name: String, fallback: Int): String = (tvOAuthProperties.getProperty(name, "").trim().toIntOrNull() ?: fallback).toString()
 
 android {
     buildFeatures { buildConfig = true }
@@ -34,6 +35,12 @@ android {
         versionName = "v2.2.0"
         buildConfigField("String", "TV_GOOGLE_CLIENT_ID", tvOAuthValue("litube.google.clientId"))
         buildConfigField("String", "TV_GOOGLE_CLIENT_SECRET", tvOAuthValue("litube.google.clientSecret"))
+        // Casting from outside the home network. Blank keys (as in CI builds) turn it off.
+        buildConfigField("String", "REMOTE_HOST", tvOAuthValue("litube.remote.host"))
+        buildConfigField("int", "REMOTE_PORT", tvPortValue("litube.remote.port", 11))
+        buildConfigField("String", "REMOTE_SECRET", tvOAuthValue("litube.remote.secret"))
+        buildConfigField("int", "TV_HELPER_PORT", tvPortValue("litube.tvHelper.port", 10))
+        buildConfigField("String", "TV_HELPER_SECRET", tvOAuthValue("litube.tvHelper.secret"))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {

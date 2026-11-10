@@ -41,6 +41,8 @@ public final class CastOverlay {
         view.setVisibility(show ? View.VISIBLE : View.GONE);
         if (!show) return;
         String state = cast.loading() ? "Loading on " : "Playing on ";
-        label.setText(cast.videoId().isEmpty() ? "Connected to " + cast.deviceName() : state + cast.deviceName());
+        // One line: a second one would push the label up into the player's play/pause button.
+        String via = cast.remote() ? " · via internet" : "";
+        label.setText((cast.videoId().isEmpty() ? "Connected to " + cast.deviceName() : state + cast.deviceName()) + via);
     }
 }

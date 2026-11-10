@@ -13,6 +13,7 @@ import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
+import com.hhst.youtubelite.BuildConfig;
 import com.hhst.youtubelite.R;
 import com.hhst.youtubelite.extractor.*;
 import com.hhst.youtubelite.player.engine.TvPlaybackSources;
@@ -33,6 +34,7 @@ public class TvReceiverService extends Service {
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private WeakReference<Screen> screen = new WeakReference<>(null);
     private volatile CastServer server;
+    private RemoteCastListener remote;
     private CastTls.Identity identity;
     private NsdManager nsd;
     private NsdManager.RegistrationListener registration;
@@ -44,6 +46,8 @@ public class TvReceiverService extends Service {
     private boolean pendingPairPrompt;
     private ExtractionSession extraction;
     private boolean refreshed, destroyed, desiredPlaying, pendingCastFullscreen;
+    // LiTube is on screen. A cast that arrives before then is prepared once the screen opens.
+    private boolean onScreen;
     private String currentId, title = "Ready to cast", author = "", error = "";
     private List<TvVideo> upNext = List.of();
     private final Set<String> recentCommands = new LinkedHashSet<>();
@@ -106,7 +110,7 @@ public class TvReceiverService extends Service {
                     if (path.equals("/status") && body.has("since")) { authorize(token); awaitChange(body.get("since").getAsLong()); }
                     return onMain(() -> route(path, token, body));
                 });
-                main.post(() -> { if (destroyed) { opened.close(); return; } identity = created; server = opened; advertise(); publish(); });
+                main.post(() -> { if (destroyed) { opened.close(); return; } identity = created; server = opened; advertise(); startRemote(); publish(); });
             } catch (Exception e) { main.post(() -> { error = "Casting could not start. Close other LiTube TV sessions and try again."; publish(); }); }
         });
     }
@@ -152,6 +156,11 @@ public class TvReceiverService extends Service {
             return result;
         }
         authorize(token);
+        return command(path, body);
+    }
+    /** Playback commands, after the caller was authenticated by a paired token or a signed remote command. */
+    private JsonObject command(String path, JsonObject body) {
+        if (destroyed) throw new IllegalStateException();
         if ((path.equals("/pause") || path.equals("/resume") || path.equals("/seek")) && body.has("videoId") && !text(body, "videoId", 32).equals(currentId)) throw new IllegalArgumentException("The TV is playing a different video");
         switch (path) {
             case "/play" -> {
@@ -212,6 +221,24 @@ public class TvReceiverService extends Service {
     }
     private String text(JsonObject body, String key, int max) { if (!body.has(key) || !body.get(key).isJsonPrimitive()) throw new IllegalArgumentException("Missing " + key); String value = body.get(key).getAsString(); if (value.length() > max) throw new IllegalArgumentException("Value too long"); return value; }
     public void playLocal(String input) { refreshed = false; load(CastProtocol.videoId(input), 0, false); }
+    /**
+     * LiTube left or returned to the screen. While it is away, the hardware video decoder is
+     * released: this TV's MediaTek chip froze and restarted itself when it switched to an HDMI
+     * input while LiTube still held the decoder (seen on 9 and 10 November 2026). The video and
+     * position are kept, and playback is prepared again, paused, when LiTube returns.
+     */
+    public void setOnScreen(boolean value) {
+        onScreen = value;
+        if (!value) {
+            if (player.getPlaybackState() == Player.STATE_IDLE) return;
+            player.setPlayWhenReady(false);
+            player.stop();
+            publish();
+        } else if (currentId != null && error.isEmpty() && player.getMediaItemCount() > 0 && player.getPlaybackState() == Player.STATE_IDLE) {
+            player.prepare();
+            player.setPlayWhenReady(desiredPlaying);
+        }
+    }
     public void stopPlayback() { generation++; if (extraction != null) extraction.cancel(); player.stop(); currentId = null; title = "Ready to cast"; author = ""; error = ""; upNext = List.of(); publish(); }
     /** Plays the first suggestion after the current video, as YouTube's autoplay does. */
     public boolean playNext() {
@@ -238,7 +265,9 @@ public class TvReceiverService extends Service {
                 title = "Couldn't play this video"; error = "Could not load this video. Check the TV's internet connection and try again."; publish(); return;
             }
             try {
-                player.setMediaSource(TvPlaybackSources.create(details)); player.seekTo(position); player.prepare(); player.setPlayWhenReady(desiredPlaying);
+                player.setMediaSource(TvPlaybackSources.create(details)); player.seekTo(position);
+                // Off screen, the decoder stays free until LiTube is shown again (see setOnScreen).
+                if (onScreen) { player.prepare(); player.setPlayWhenReady(desiredPlaying); }
                 title = details.video().getTitle(); author = details.video().getAuthor() == null ? "" : details.video().getAuthor();
                 Long seconds = details.video().getDuration();
                 remember(TvVideo.of(id, title, author, seconds == null ? 0 : seconds));
@@ -290,6 +319,11 @@ public class TvReceiverService extends Service {
         return new NotificationCompat.Builder(this, "litube_tv").setSmallIcon(R.mipmap.ic_launcher).setContentTitle("LiTube TV").setContentText(text)
                 .setContentIntent(open).setOngoing(true).addAction(0, "Turn off casting", stop).build();
     }
+    /** Signed commands from a phone outside the home network; off when this build has no remote key. */
+    private void startRemote() {
+        if (BuildConfig.REMOTE_SECRET.isBlank()) return;
+        remote = new RemoteCastListener(BuildConfig.REMOTE_SECRET, getSharedPreferences("litube_cast", 0), (path, body) -> onMain(() -> command(path, body)));
+    }
     private void advertise() {
         nsd = getSystemService(NsdManager.class);
         NsdServiceInfo info = new NsdServiceInfo(); info.setServiceName(tvName()); info.setServiceType(CastProtocol.SERVICE_TYPE); info.setPort(port());
@@ -330,7 +364,7 @@ public class TvReceiverService extends Service {
     @Override public void onDestroy() {
         destroyed = true; generation++; instance = null; screen.clear(); if (extraction != null) extraction.cancel();
         synchronized (changes) { changes.notifyAll(); }
-        if (server != null) server.close(); network.shutdownNow();
+        if (server != null) server.close(); if (remote != null) remote.close(); network.shutdownNow();
         if (nsd != null && registration != null) try { nsd.unregisterService(registration); } catch (Exception ignored) {}
         if (player != null) player.release(); if (mediaSession != null) mediaSession.release(); stopForeground(true); super.onDestroy();
     }

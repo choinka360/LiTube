@@ -38,6 +38,9 @@ public final class CastSession {
     private CastClient.Device device;
     private String videoId = "", title = "", author = "", connecting = "";
     private boolean playing, playWhenReady, ended, loading;
+    // The session reaches the TV through the router, from outside the home network.
+    private boolean remote;
+    private String progress = "";
     private long positionMs, durationMs, stateAt;
     private float speed = 1f;
     private volatile long generation;
@@ -64,6 +67,10 @@ public final class CastSession {
     public String title() { return title; }
     /** Name of the TV currently being connected to, or empty. */
     public String connecting() { return connecting; }
+    /** What connecting is waiting for, such as the TV starting. */
+    public String progress() { return progress; }
+    /** Connected through the internet rather than the home network. */
+    public boolean remote() { return remote; }
     public long duration() { return durationMs; }
     /** TV position, advanced locally between status updates. */
     public long position() {
@@ -79,25 +86,58 @@ public final class CastSession {
      * Retries for a while so a TV that is waking from standby can answer.
      */
     public void connect(CastClient.Device target, String id, long position, Callback callback) {
-        connecting = target.name; changed();
+        connecting = target.name; progress = "Connecting…"; changed();
         worker.execute(() -> {
             String failure = null;
             try {
                 if (target.mac != null && !target.mac.isEmpty()) try { WakeOnLan.send(target.mac); } catch (Exception ignored) { }
+                RemoteLink link = new RemoteLink(target.host);
+                // Like RemoteWakeUp: the TV helper switches the TV on, at home or from outside.
+                poller.execute(() -> {
+                    String reply = link.wakeTv(10_000);
+                    if (reply != null && reply.startsWith("WAIT")) main.post(() -> { if (!connecting.isEmpty()) { progress = "The TV is starting…"; changed(); } });
+                });
                 JsonObject body = new JsonObject(); String command = "status";
                 if (id != null) { command = "play"; body.addProperty("videoId", id); body.addProperty("positionMs", Math.max(0, position)); body.addProperty("requestId", UUID.randomUUID().toString()); }
-                JsonObject state = retrying(target, command, body, 20_000);
-                if (state.has("name")) target.name = state.get("name").getAsString();
+                JsonObject state = null;
+                boolean viaInternet = false;
+                if (onLocalNetwork() || !RemoteLink.configured()) {
+                    try { state = retrying(target, command, body, RemoteLink.configured() ? 6_000 : 20_000); }
+                    catch (java.io.IOException e) { if (!RemoteLink.configured() || e instanceof javax.net.ssl.SSLException) throw e; }
+                }
+                if (state == null) {
+                    // Not on the home network, or the TV didn't answer there: go through the router.
+                    viaInternet = true;
+                    main.post(() -> { progress = "Waking the TV through the internet…"; changed(); });
+                    // A TV starting from power-off needs well over a minute before LiTube answers.
+                    state = link.request(command, body, 120_000);
+                }
+                JsonObject reply = state;
+                if (reply.has("name")) target.name = reply.get("name").getAsString();
                 CastClient.save(context, target);
-                String finalCommand = command;
-                main.post(() -> acknowledge(target, "play", state, finalCommand.equals("play")));
+                String finalCommand = command; boolean remoteSession = viaInternet;
+                main.post(() -> {
+                    if (device == null || !device.sameTv(target)) remote = remoteSession;
+                    acknowledge(target, "play", reply, finalCommand.equals("play"));
+                });
             } catch (CastClient.Unauthorized e) {
                 // The TV revoked this phone; the caller asks the TV to approve it again.
                 target.token = ""; CastClient.save(context, target); failure = "Allow this phone on the TV again.";
             } catch (Exception e) { failure = message(e); }
             String error = failure;
-            main.post(() -> { connecting = ""; changed(); if (callback != null) callback.done(error); });
+            main.post(() -> { connecting = ""; progress = ""; changed(); if (callback != null) callback.done(error); });
         });
+    }
+    /** Wi-Fi or Ethernet: the TV may be on the same network. On mobile data it can't be. */
+    private boolean onLocalNetwork() {
+        android.net.ConnectivityManager manager = context.getSystemService(android.net.ConnectivityManager.class);
+        android.net.NetworkCapabilities caps = manager == null ? null : manager.getNetworkCapabilities(manager.getActiveNetwork());
+        return caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET));
+    }
+    /** One command over the session's path: the home network, or the internet through the router. */
+    private static JsonObject request(CastClient.Device target, boolean viaInternet, String command, JsonObject body) throws Exception {
+        if (viaInternet) return new RemoteLink(target.host).request(command, body, 8_000);
+        try (CastClient client = new CastClient(target)) { return client.request(command, body); }
     }
     private static JsonObject retrying(CastClient.Device target, String command, JsonObject body, long patience) throws Exception {
         long deadline = SystemClock.elapsedRealtime() + patience;
@@ -109,6 +149,7 @@ public final class CastSession {
         }
     }
     static String message(Exception e) {
+        if (e instanceof RemoteLink.NoAnswer) return e.getMessage();
         if (e instanceof java.net.ConnectException || e instanceof java.net.SocketTimeoutException || e instanceof java.io.InterruptedIOException) return "The TV didn't respond. Make sure LiTube is open on the TV and both devices use the same Wi-Fi.";
         if (e instanceof javax.net.ssl.SSLException) return "This TV's identity changed (was LiTube reinstalled?). Long-press it, choose Forget, then connect again.";
         return e.getMessage() == null ? "Couldn't reach the TV" : e.getMessage();
@@ -164,16 +205,16 @@ public final class CastSession {
         long result = handoffPosition; handoffId = null; handoffPosition = -1; return result;
     }
     public void disconnect() {
-        device = null; videoId = ""; title = ""; pendingCast = null; playing = playWhenReady = ended = loading = false; generation++;
+        device = null; videoId = ""; title = ""; pendingCast = null; playing = playWhenReady = ended = loading = remote = false; generation++;
         NotificationManagerCompat.from(context).cancel(NOTIFICATION);
         changed();
     }
     private void send(String command, JsonObject body, String failure) {
-        CastClient.Device target = device; long requestGeneration = generation;
+        CastClient.Device target = device; long requestGeneration = generation; boolean viaInternet = remote;
         if (target == null) return;
         worker.execute(() -> {
-            try (CastClient client = new CastClient(target)) {
-                JsonObject state = client.request(command, body);
+            try {
+                JsonObject state = request(target, viaInternet, command, body);
                 main.post(() -> { if (generation != requestGeneration || command.equals("stop")) return; if (command.equals("play")) pendingCast = null; update(state); });
             } catch (Exception e) {
                 main.post(() -> {
@@ -206,6 +247,7 @@ public final class CastSession {
     /** Follows the TV's state with long-polls; the TV answers as soon as anything changes. */
     private void startPolling() {
         long session = generation; CastClient.Device target = device;
+        if (remote) { pollThroughInternet(session, target); return; }
         poller.execute(() -> {
             long since = -1; int failures = 0;
             try (CastClient client = new CastClient(target, true)) {
@@ -225,6 +267,24 @@ public final class CastSession {
                     }
                 }
             } catch (Exception ignored) { }
+        });
+    }
+    /** Away from home there is no long-poll: the TV is asked for its state every few seconds. */
+    private void pollThroughInternet(long session, CastClient.Device target) {
+        poller.execute(() -> {
+            RemoteLink link = new RemoteLink(target.host);
+            int failures = 0;
+            while (generation == session) {
+                try {
+                    JsonObject state = link.request("status", new JsonObject(), 4_000);
+                    failures = 0;
+                    main.post(() -> { if (generation == session) update(state); });
+                } catch (Exception e) {
+                    // Mobile data drops packets more often; give up after about a minute without answers.
+                    if (++failures >= 12) { main.post(() -> { if (generation == session) { disconnect(); Toast.makeText(context, "Lost connection to the TV", Toast.LENGTH_LONG).show(); } }); return; }
+                }
+                try { Thread.sleep(3_000); } catch (InterruptedException e) { return; }
+            }
         });
     }
     private void notification() {
