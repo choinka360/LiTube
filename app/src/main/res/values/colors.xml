@@ -2,6 +2,7 @@
 <resources>
     <color name="yt_red">#FF0000</color>
     <color name="tv_background">#0F0F0F</color>
+    <color name="ic_launcher_background">#8C6A1E</color>
     <color name="primary">#0F0F0F</color>
     <color name="on_primary">#FFFFFF</color>
     <color name="secondary">#606060</color>

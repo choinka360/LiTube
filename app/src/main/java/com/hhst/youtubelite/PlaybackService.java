@@ -222,7 +222,7 @@ public class PlaybackService extends Service {
 		launchIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 		PendingIntent contentIntent = PendingIntent.getActivity(this, 101, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 		final NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-						.setSmallIcon(R.drawable.ic_launcher_foreground)
+						.setSmallIcon(R.drawable.ic_play)
 						.setContentTitle(title)
 						.setContentText(artist)
 						.setLargeIcon(largeIcon)

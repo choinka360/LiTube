@@ -60,7 +60,8 @@ final class TvCards {
             else if (video.durationSec() > 0) { badge.setVisibility(View.VISIBLE); badge.setText(TvVideo.clock(video.durationSec())); badge.setBackgroundResource(R.drawable.tv_duration_bg); }
             else badge.setVisibility(View.GONE);
             thumb.setImageDrawable(null);
-            Picasso.get().load(video.thumbnail()).resize(448, 252).centerCrop().into(thumb);
+            // RGB_565 halves the memory each thumbnail takes; cards have no transparency.
+            Picasso.get().load(video.thumbnail()).resize(448, 252).centerCrop().config(android.graphics.Bitmap.Config.RGB_565).into(thumb);
             itemView.setOnClickListener(v -> listener.open(video));
             itemView.setOnFocusChangeListener((v, focused) -> {
                 v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).translationZ(focused ? 12f : 0f).setDuration(150).start();
